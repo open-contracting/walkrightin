@@ -42,6 +42,10 @@ class FilesSource(Source):
                 paths.append(path)
             else:
                 self.skipped[ext or "no type"] += 1
+        # A wrong path would otherwise leave the source's links out of the run without a word.
+        if not paths:
+            msg = f"{self.path} has no {', '.join(self.extensions)} files"
+            raise FileNotFoundError(msg)
         with ThreadPoolExecutor(self.workers) as pool:
             results = list(pool.map(self.extractor.file, paths))
         for path, (found, error) in zip(paths, results, strict=True):

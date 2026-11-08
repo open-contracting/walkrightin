@@ -42,6 +42,23 @@ def test_files(context, tmp_path):
     assert source.skipped == {".png": 1}
 
 
+@pytest.mark.parametrize("names", [[], ["image.png"]])
+def test_files_none(context, tmp_path, names):
+    for name in names:
+        (tmp_path / name).write_bytes(b"")
+    source = create(context, {"type": "files", "path": str(tmp_path), "extensions": [".pdf"]})
+
+    with pytest.raises(FileNotFoundError, match=r"has no \.pdf files"):
+        list(source.links())
+
+
+def test_files_missing(context, tmp_path):
+    source = create(context, {"type": "files", "path": str(tmp_path / "missing")})
+
+    with pytest.raises(FileNotFoundError, match="not found"):
+        list(source.links())
+
+
 def test_csv(context, tmp_path):
     path = tmp_path / "export.csv"
     path.write_text(f"file,page URL,link text\n{DOC_URL},https://a.org/x | https://a.org/y,Doc\n")

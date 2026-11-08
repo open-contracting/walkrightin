@@ -8,6 +8,8 @@ Built-in sources
   A WordPress site's live content, from its MySQL database: the content and excerpt of published posts of ``post_types``, and their custom fields. Content in a language that WPML has deactivated is skipped. Options: ``database``, ``prefix`` (default ``wp_``), ``post_types``, ``user``, ``password``, ``host``, ``port``, ``socket``. Each link's location is ``wp:POST_ID/FIELD``; mapping a post to its page is left to you.
 ``files``
   The PDF, Word, PowerPoint, Excel and CSV files in a directory, like a website's uploads. Options: ``path``, ``location_prefix``, ``extensions``.
+
+  A run fails if the directory is missing or has none of these files, since a wrong ``path`` would otherwise leave the source's links out of the run.
 ``github``
   The tracked files of public repositories: text files, and PDF, Word, PowerPoint and Excel files. Options: ``orgs``, ``repos``, ``exclude``, ``branches`` ({repository: [branch]}, read as well as the default branch), ``forks``, ``archived``, ``include_private``. Each link's location is the file's page on GitHub. Set ``GITHUB_TOKEN`` to raise GitHub's rate limit.
 
