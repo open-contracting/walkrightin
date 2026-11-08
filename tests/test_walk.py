@@ -362,6 +362,15 @@ def test_refresh_one_source(tmp_path):
     assert json.loads((tmp_path / "out" / "run.json").read_text())["refreshed"] == ["other"]
 
 
+def test_refresh_run_without_keys(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "links.csv").write_text(f"source,item_id\nseeds,{DOC}\n")
+
+    with pytest.raises(ValueError, match="isn't an installed platform's key"):
+        make_run(tmp_path, FakeGoogle(), {}, only=["seeds"]).execute()
+
+
 def test_noted_link_without_target(tmp_path):
     (tmp_path / "seeds.csv").write_text("url,location\nhttps://example.com/split,page\n")
     run = make_run(tmp_path, FakeGoogle(), {}, walk_enabled=False)

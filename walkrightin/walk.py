@@ -149,6 +149,16 @@ class Run:
 
     # Sources
 
+    def previous_links(self):
+        """Return the existing run's links.csv rows. Fail if a key isn't an installed platform's."""
+        rows = read_csv(self.path("links.csv"))
+        names = {p.name for p in self.platforms}
+        for r in rows:
+            if r["item_id"] and platforms_module.split_key(r["item_id"])[0] not in names:
+                msg = f"{self.path('links.csv')}: {r['item_id']} isn't an installed platform's key. Run in full again."
+                raise ValueError(msg)
+        return rows
+
     def source_links(self):
         """Return the links.csv rows of the sources' links, checked, with each source's count."""
         context = Context(
@@ -160,9 +170,7 @@ class Run:
         )
         kept = []
         if self.only:
-            kept = [
-                r for r in read_csv(self.path("links.csv")) if r["source"] not in self.only and r["source"] != WALK
-            ]
+            kept = [r for r in self.previous_links() if r["source"] not in self.only and r["source"] != WALK]
         found = []
         for options in self.config.sources:
             source = create(context, options)
@@ -343,7 +351,7 @@ class Run:
         started = now()
         state = read_json(self.path("state.json"), {}) if self.resume else {}
         if self.resume and state:
-            rows = read_csv(self.path("links.csv"))
+            rows = self.previous_links()
         else:
             rows = self.source_links()
             state = {}
