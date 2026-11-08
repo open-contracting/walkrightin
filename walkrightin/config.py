@@ -26,7 +26,7 @@ class Walk:
     max_outside_hops: int | None = None
     #: Whether to read CSV files. Off by default: their URLs are usually data, not links.
     download_csv: bool = False
-    workers: int = 4
+    workers: int = 8
 
 
 @dataclass
