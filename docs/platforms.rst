@@ -31,7 +31,7 @@ Use ``also_follow`` for files you know to be shared with anyone with the link, b
 Choices to know about:
 
 - **Your files** are those in a shared drive in ``drive_readers`` (an item's ``space`` is its shared drive), or owned in ``domain``.
-- **Rate limits.** Google answers bursts of requests with a captcha for a while: the check is ``rate_limited``.
+- **Rate limits.** Google answers bursts of anonymous requests with a captcha for a while: the check is ``rate_limited``. API calls that are rate-limited (429, or 403 with a rate-limit reason) or fail on Google's side (5xx) are retried up to 5 times, with exponential backoff.
 - **User-Agent.** Google answers walkrightin's as it answers a browser: on 300 Drive URLs, every status was the same.
 - **Forms** are read through their public page, which is what respondents see, and with credentials through the Forms API. A form that doesn't accept responses shows no one its questions: its page isn't read, and the API's links are ``hidden``.
 - **Published documents.** A published document's URL (``/d/e/...``) has no Drive ID. Unless ``aliases`` maps it to its file, it's an item of its own, whose key is ``google_drive:e:`` and its published ID. It's checked and read anonymously through its published page. Its owner is unknown, so it counts as an outside file.

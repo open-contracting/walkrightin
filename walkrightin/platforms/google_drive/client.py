@@ -1,13 +1,17 @@
 """Read Drive files: anonymously, through public URLs, or with a service account's domain-wide delegation."""
 
+import random
 import re
 import shutil
 import tempfile
 import threading
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 
 from walkrightin.model import IDENTITY
 from walkrightin.platforms.google_drive.urls import COLAB, DOCUMENT, DRAWING, PRESENTATION, SPREADSHEET
@@ -60,10 +64,33 @@ SHEET_FIELDS = (
     "userEnteredValue,textFormatRuns,userEnteredFormat/textFormat/link,chipRuns,note)))"
 )
 CHUNK = 2**20
+# Credentialed requests retry rate limits and server errors, with exponential backoff (0, 2, 4, 8, 16 s, plus jitter).
+RETRY = Retry(
+    total=5,
+    backoff_factor=1,
+    backoff_jitter=1,
+    status_forcelist=(429, 500, 502, 503, 504),
+    allowed_methods=("GET",),
+    raise_on_status=False,
+)
+# Drive also signals rate limits by a 403 with these reasons, which only the body distinguishes from no access.
+RATE_LIMIT_REASONS = {"rateLimitExceeded", "userRateLimitExceeded"}
+RATE_LIMIT_DELAYS = (1, 2, 4, 8, 16)
 
 
 def headers(file_id, key):
     return {"X-Goog-Drive-Resource-Keys": f"{file_id}/{key}"} if key else {}
+
+
+def rate_limited(response):
+    """Return whether a response is a 403 for a rate limit, rather than for a lack of access."""
+    if response.status_code != requests.codes.forbidden:
+        return False
+    try:
+        errors = response.json()["error"]["errors"]
+    except (ValueError, KeyError, TypeError):
+        return False
+    return any(e.get("reason") in RATE_LIMIT_REASONS for e in errors)
 
 
 class Client:
@@ -105,16 +132,21 @@ class Client:
                     self.key_file, scopes=self.scopes, subject=user
                 )
                 sessions[user] = AuthorizedSession(credentials)
+                sessions[user].mount("https://", HTTPAdapter(max_retries=RETRY))
         return sessions[user]
 
     def get(self, user, url, params=None, key_for=None, **kwargs):
         """Return (JSON or None, error text) for a GET request to an API."""
-        try:
-            response = self.session(user).get(
-                url, params=params, headers=headers(*key_for) if key_for else {}, timeout=self.timeout, **kwargs
-            )
-        except requests.RequestException as e:
-            return None, str(e)[:200]
+        for delay in (*RATE_LIMIT_DELAYS, None):
+            try:
+                response = self.session(user).get(
+                    url, params=params, headers=headers(*key_for) if key_for else {}, timeout=self.timeout, **kwargs
+                )
+            except requests.RequestException as e:
+                return None, str(e)[:200]
+            if delay is None or not rate_limited(response):
+                break
+            time.sleep(delay + random.random())  # noqa: S311
         if not response.ok:
             return None, f"{response.status_code} {response.reason}"
         return response.json(), ""

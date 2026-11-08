@@ -324,3 +324,44 @@ def test_link(monkeypatch):
         "unknown folder": ("reader", True, ""),
         "inherited": ("reader", True, "F"),
     }
+
+
+class Response:
+    def __init__(self, status_code, body):
+        self.status_code = status_code
+        self.ok = status_code == 200
+        self.reason = "Forbidden"
+        self.body = body
+
+    def json(self):
+        return self.body
+
+
+def rate_limit(reason):
+    return Response(403, {"error": {"errors": [{"domain": "usageLimits", "reason": reason}]}})
+
+
+def test_rate_limited():
+    assert client.rate_limited(rate_limit("userRateLimitExceeded"))
+    assert not client.rate_limited(rate_limit("insufficientFilePermissions"))
+    assert not client.rate_limited(Response(403, None))
+    assert not client.rate_limited(Response(200, {}))
+
+
+@pytest.mark.parametrize(
+    ("responses", "expected", "sleeps"),
+    [
+        ([rate_limit("rateLimitExceeded"), Response(200, {"id": "1"})], ({"id": "1"}, ""), 1),
+        ([rate_limit("insufficientFilePermissions")], (None, "403 Forbidden"), 0),
+        ([rate_limit("rateLimitExceeded")] * 6, (None, "403 Forbidden"), 5),
+    ],
+)
+def test_get_rate_limited(monkeypatch, responses, expected, sleeps):
+    remaining = list(responses)
+    slept = []
+    session = type("Session", (), {"get": lambda *_args, **_kwargs: remaining.pop(0)})()
+    monkeypatch.setattr(client.Client, "session", lambda _self, _user: session)
+    monkeypatch.setattr(client.time, "sleep", slept.append)
+
+    assert client.Client().get("user", "https://www.googleapis.com/drive/v3/files/1") == expected
+    assert len(slept) == sleeps

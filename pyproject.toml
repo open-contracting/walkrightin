@@ -27,6 +27,7 @@ dependencies = [
     "click",
     "markdown-it-py",
     "requests",
+    "urllib3>=2",
 ]
 
 [project.optional-dependencies]
