@@ -68,6 +68,7 @@ Configure
    max_download_mb = 200
    max_text_kb = 1000                 # larger text files in repositories are data, not pages
    max_folder_children = 1000         # 0 doesn't walk folders; "all" walks every folder
+   max_outside_hops = 1               # outside files to read in a row (default: no limit)
    channels = ["export", "api", "comments"]
    download_csv = false
 
@@ -106,6 +107,7 @@ Choices to know about:
 - **CSV files in Drive** aren't downloaded unless ``download_csv`` is set, because their URLs are usually data rather than links. A ``files`` source reads CSV files by default, in ``extensions``.
 - **Size limits.** Files over ``max_download_mb`` (in Drive) or ``max_text_kb`` (text files in repositories) aren't read. ``run.json`` counts them, by source, and ``scans.csv`` notes each skipped Drive file.
 - **User-Agent.** Every request identifies walkrightin, with a link to this repository. Google answers it as it answers a browser: on 300 Drive URLs, every status was the same. ``user_agent`` overrides it for anonymous requests to Drive.
+- **Outside files.** With ``max_outside_hops``, the walk reads at most that many files in a row that your organization doesn't own, counting from a source or one of your files. Your files are those in a shared drive in ``drive_readers``, or owned in ``domain``. The files an outside file links are still recorded, but outside ones beyond the limit aren't read, so that a partner's register of its own files doesn't lead the walk across Drive. ``items.csv`` records each item's ``outside_hops``, and ``run.json`` counts the files left unread. It needs credentials, to know owners.
 - **Forms** are checked but not read. **Version history** isn't read: viewers can't open it.
 
 Channels

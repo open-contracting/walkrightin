@@ -64,6 +64,7 @@ class Result:
     items: int = 0
     rate_limited: int = 0
     skipped_for_size: dict = field(default_factory=dict)
+    skipped_for_outside_hops: int = 0
 
 
 class Run:
@@ -275,6 +276,18 @@ class Run:
                 m["mime_type"] = kind(result.get("location", ""))
         return m
 
+    def own(self, m):
+        """Return whether the organization owns the item: in a shared drive in drive_readers, or owned in domain."""
+        if m.get("drive_id"):
+            return m["drive_id"] in self.drive_readers
+        domain = self.google.domain
+        return bool(domain and m.get("owner", "").lower().endswith("@" + domain))
+
+    def within_outside_hops(self, m):
+        limit = self.config.walk.max_outside_hops
+        # Without credentials, owners are unknown.
+        return limit is None or not self.google.credentialed or int(m["outside_hops"]) <= limit
+
     def followed(self, item_id, m):
         if item_id in self.also_follow:
             return True
@@ -465,6 +478,8 @@ class Run:
         keys = state.get("keys") or {}
         info = state.get("info") or {}
         urls = state.get("urls") or {}
+        # The fewest outside files in a row on the way to each item, through its parents at the shortest depth.
+        runs = state.get("runs") or {}
         level, depth = state.get("level"), state.get("depth", 0)
         if level is None:
             for r in rows:
@@ -485,9 +500,13 @@ class Run:
             to_scan = []
             for i, m in zip(level, metas, strict=True):
                 m["followed"] = "1" if self.followed(i, m) else ""
+                m["outside_hops"] = 0 if self.own(m) else runs.get(i, 0) + 1
                 info[i] = m
                 if m["followed"] and depth < max_depth:
-                    to_scan.append(i)
+                    if self.within_outside_hops(m):
+                        to_scan.append(i)
+                    else:
+                        self.result.skipped_for_outside_hops += 1
             if depth == max_depth and (unfollowed := [i for i in level if info[i]["followed"]]):
                 logger.warning("depth limit %d reached: %d followed items not read", max_depth, len(unfollowed))
             with ThreadPoolExecutor(self.config.walk.workers) as pool:
@@ -504,9 +523,20 @@ class Run:
                     if j and j != i and j not in seen:
                         seen[j] = [depth + 1, i]
                         urls[j] = r["target_url"]
+                        runs[j] = info[i]["outside_hops"]
                         nxt.append(j)
+                    elif j and seen.get(j, [None])[0] == depth + 1:
+                        runs[j] = min(runs.get(j, 0), info[i]["outside_hops"])
             level, depth = nxt, depth + 1
-            state = {"seen": seen, "keys": keys, "info": info, "urls": urls, "level": level, "depth": depth}
+            state = {
+                "seen": seen,
+                "keys": keys,
+                "info": info,
+                "urls": urls,
+                "runs": runs,
+                "level": level,
+                "depth": depth,
+            }
             self.write(rows + walk_rows, seen, info, scans, comments, state)
             logger.info("depth %d: %d items, %d read, %d new", depth - 1, len(metas), len(to_scan), len(nxt))
         return rows + walk_rows, seen, info, scans, comments
@@ -561,6 +591,7 @@ class Run:
                 "items": len(seen),
                 "rate_limited": self.result.rate_limited,
                 "skipped_for_size": self.result.skipped_for_size,
+                "skipped_for_outside_hops": self.result.skipped_for_outside_hops,
                 "config": dataclasses.asdict(self.config),
                 "refreshed": sorted(self.only),
             },

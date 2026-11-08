@@ -27,6 +27,7 @@ class FakeGoogle:
     def __init__(self, *, credentialed=False, files=None, roles=None, contents=None, children=None, comments=None):
         self.credentialed = credentialed
         self.subjects = ["staff@example.org"] if credentialed else []
+        self.domain = "example.org"
         self.files = files or {}
         self.roles = roles or {}
         self.contents = contents or {}
@@ -357,3 +358,38 @@ def test_no_walk(tmp_path):
 
     assert [r["url_status"] for r in read(tmp_path, "links.csv")] == ["public"]
     assert read(tmp_path, "items.csv") == []
+
+
+@pytest.mark.parametrize(("limit", "scanned", "reached"), [(None, 4, 4), (1, 2, 3), (0, 1, 2)])
+def test_max_outside_hops(tmp_path, limit, scanned, reached):
+    outside = [
+        "1OuTsIdEaOuTsIdEaOuTsIdEaOuTsIdEa1",
+        "1OuTsIdEbOuTsIdEbOuTsIdEbOuTsIdEb2",
+        "1OuTsIdEcOuTsIdEcOuTsIdEcOuTsIdEc3",
+    ]
+    google = FakeGoogle(
+        credentialed=True,
+        files={
+            DOC: {"name": "Own", "mimeType": DOCUMENT, "owners": [{"emailAddress": "staff@example.org"}]},
+            **{
+                i: {"name": i, "mimeType": DOCUMENT, "owners": [{"emailAddress": "someone@partner.org"}]}
+                for i in outside
+            },
+        },
+        roles=dict.fromkeys([DOC, *outside], "reader"),
+        contents={
+            DOC: f"https://docs.google.com/document/d/{outside[0]}/edit",
+            outside[0]: f"https://docs.google.com/document/d/{outside[1]}/edit",
+            outside[1]: f"https://docs.google.com/document/d/{outside[2]}/edit",
+            outside[2]: "no links",
+        },
+    )
+    walk = {"max_folder_children": 0, **({"max_outside_hops": limit} if limit is not None else {})}
+
+    result = make_run(tmp_path, google, {}, walk=walk, check={"items": "unreadable"}).execute()
+
+    found = items(tmp_path)
+    assert [found[i]["outside_hops"] for i in (DOC, *outside) if i in found] == ["0", "1", "2", "3"][:reached]
+    assert len({r["item_id"] for r in read(tmp_path, "scans.csv")}) == scanned
+    assert len(found) == reached
+    assert result.skipped_for_outside_hops == (1 if limit is not None else 0)

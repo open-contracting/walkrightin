@@ -23,6 +23,8 @@ class Walk:
     #: 0 disables walking folders, and "all" walks every folder whatever its size.
     max_folder_children: int | str = 1000
     channels: list = field(default_factory=lambda: list(CHANNELS))
+    #: The most files owned outside the organization to read in a row, from a source or an own file. None is no limit.
+    max_outside_hops: int | None = None
     #: Whether to read CSV files in Drive. Off by default: their URLs are usually data, not links.
     download_csv: bool = False
     workers: int = 4
@@ -142,6 +144,10 @@ def load(path=None, data=None):
         raise ValueError(msg)
     if unknown := set(config.walk.channels) - set(CHANNELS):
         msg = f"unknown channel(s): {', '.join(sorted(unknown))}"
+        raise ValueError(msg)
+    hops = config.walk.max_outside_hops
+    if hops is not None and not (isinstance(hops, int) and hops >= 0):
+        msg = "[walk] max_outside_hops must be a non-negative integer"
         raise ValueError(msg)
     if config.walk.max_folder_children != "all" and not (
         isinstance(config.walk.max_folder_children, int) and config.walk.max_folder_children >= 0

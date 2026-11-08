@@ -30,6 +30,7 @@ ITEM_FIELDS = [
     "depth",
     "linked_from",
     "followed",
+    "outside_hops",
     "link_role",
     "link_inherited",
     "link_from",
