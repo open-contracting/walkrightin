@@ -1,3 +1,4 @@
+import base64
 import dataclasses
 import logging
 import os
@@ -23,11 +24,26 @@ class GitHubSource(Source):
     lists other repositories, and ``exclude`` repositories not to read. Each repository's default branch is read, plus
     any in ``branches`` ({repo: [branch]}). Each link's location is the file's page on GitHub. Clones are shallow, in
     the cache directory. Set GITHUB_TOKEN to raise GitHub's rate limit.
+
+    With ``include_private``, the organizations' private repositories are read too, like those of public websites
+    whose source is private. GITHUB_TOKEN must then be able to read them; it's passed to git in its environment.
     """
 
     type = "github"
 
-    def __init__(self, context, *, orgs=(), repos=(), exclude=(), branches=None, forks=True, archived=True, **kwargs):
+    def __init__(
+        self,
+        context,
+        *,
+        orgs=(),
+        repos=(),
+        exclude=(),
+        branches=None,
+        forks=True,
+        archived=True,
+        include_private=False,
+        **kwargs,
+    ):
         super().__init__(context, **kwargs)
         self.orgs = list(orgs)
         self.repos = list(repos)
@@ -36,17 +52,22 @@ class GitHubSource(Source):
         self.forks = forks
         self.archived = archived
         self.clones = Path(context.cache_dir) / "repos"
+        self.include_private = include_private
+        self.token = os.getenv("GITHUB_TOKEN")
+        if include_private and not self.token:
+            msg = "include_private requires GITHUB_TOKEN"
+            raise ValueError(msg)
 
     def repositories(self, org):
-        """Return the organization's public repositories."""
+        """Return the organization's public repositories, and its private ones with ``include_private``."""
         repos, page = [], 1
         headers = {"Accept": "application/vnd.github+json"}
-        if token := os.getenv("GITHUB_TOKEN"):
-            headers["Authorization"] = f"Bearer {token}"
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
         while True:
             response = self.context.session.get(
                 f"https://api.github.com/orgs/{org}/repos",
-                params={"type": "public", "per_page": PER_PAGE, "page": page},
+                params={"type": "all" if self.include_private else "public", "per_page": PER_PAGE, "page": page},
                 headers=headers,
                 timeout=30,
             )
@@ -55,29 +76,40 @@ class GitHubSource(Source):
             repos += [
                 r["full_name"]
                 for r in batch
-                if not r["private"] and (self.forks or not r["fork"]) and (self.archived or not r["archived"])
+                if (self.include_private or not r["private"])
+                and (self.forks or not r["fork"])
+                and (self.archived or not r["archived"])
             ]
             if len(batch) < PER_PAGE:
                 return repos
             page += 1
+
+    def git(self, *args, **kwargs):
+        """Run git. With ``include_private``, authenticate with the token in git's environment, not its arguments."""
+        env = None
+        if self.include_private:
+            credentials = base64.b64encode(f"x-access-token:{self.token}".encode()).decode()
+            env = {
+                **os.environ,
+                "GIT_CONFIG_COUNT": "1",
+                "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
+                "GIT_CONFIG_VALUE_0": f"AUTHORIZATION: basic {credentials}",
+            }
+        return subprocess.run(["git", *args], check=True, env=env, **kwargs)  # noqa: S603, S607
 
     def checkout(self, repo, branch):
         """Return (directory, branch name) for a shallow clone of the branch (default: the default branch)."""
         directory = self.clones / (repo + (f"@{branch}" if branch else ""))
         if directory.exists():
             ref = branch or "HEAD"
-            subprocess.run(["git", "-C", directory, "fetch", "-q", "--depth", "1", "origin", ref], check=True)  # noqa: S603, S607
-            subprocess.run(["git", "-C", directory, "reset", "-q", "--hard", "FETCH_HEAD"], check=True)  # noqa: S603, S607
+            self.git("-C", directory, "fetch", "-q", "--depth", "1", "origin", ref)
+            self.git("-C", directory, "reset", "-q", "--hard", "FETCH_HEAD")
         else:
             options = ["--branch", branch] if branch else []
             url = f"https://github.com/{repo}.git"
-            subprocess.run(["git", "clone", "-q", "--depth", "1", *options, url, directory], check=True)  # noqa: S603, S607
+            self.git("clone", "-q", "--depth", "1", *options, url, directory)
         if not branch:
-            out = subprocess.run(  # noqa: S603
-                ["git", "-C", directory, "ls-remote", "--symref", "origin", "HEAD"],  # noqa: S607
-                capture_output=True,
-                check=True,
-            )
+            out = self.git("-C", directory, "ls-remote", "--symref", "origin", "HEAD", capture_output=True)
             branch = re.search(r"refs/heads/(\S+)\tHEAD", out.stdout.decode()).group(1)
         return directory, branch
 

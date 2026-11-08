@@ -1,4 +1,5 @@
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
@@ -133,3 +134,53 @@ def test_wordpress(context, monkeypatch):
         ("wp:3/block", DOC_URL, "Same"),
         ("wp:4/post_content", DOC_URL, "Deep dive | VIEW á"),
     ]
+
+
+class FakeGitHub:
+    def __init__(self, repos):
+        self.repos = repos
+        self.params = []
+
+    def get(self, url, params=None, **kwargs):
+        self.params.append(params)
+        return SimpleNamespace(json=lambda: self.repos, raise_for_status=lambda: None)
+
+
+REPOS = [
+    {"full_name": "o/site", "private": True, "fork": False, "archived": False},
+    {"full_name": "o/docs", "private": False, "fork": False, "archived": False},
+]
+
+
+def test_github_public_only(context):
+    context.session = FakeGitHub(REPOS)
+    source = create(context, {"type": "github", "orgs": ["o"]})
+
+    assert source.repositories("o") == ["o/docs"]
+    assert context.session.params[0]["type"] == "public"
+
+
+def test_github_include_private(context, monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "secret")
+    context.session = FakeGitHub(REPOS)
+    runs = []
+    monkeypatch.setattr(
+        "walkrightin.sources.github.subprocess.run", lambda args, **kwargs: runs.append((args, kwargs["env"]))
+    )
+    source = create(context, {"type": "github", "orgs": ["o"], "include_private": True})
+
+    assert source.repositories("o") == ["o/site", "o/docs"]
+    assert context.session.params[0]["type"] == "all"
+
+    source.git("fetch")
+    args, env = runs[0]
+    assert "secret" not in " ".join(args)
+    assert env["GIT_CONFIG_KEY_0"] == "http.https://github.com/.extraheader"
+    assert env["GIT_CONFIG_VALUE_0"] == "AUTHORIZATION: basic eC1hY2Nlc3MtdG9rZW46c2VjcmV0"
+
+
+def test_github_include_private_requires_token(context, monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+
+    with pytest.raises(ValueError, match="include_private requires GITHUB_TOKEN"):
+        create(context, {"type": "github", "orgs": ["o"], "include_private": True})
