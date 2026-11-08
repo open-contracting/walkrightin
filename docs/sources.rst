@@ -17,6 +17,8 @@ Built-in sources
 ``drive``
   Drive files by ID, read and walked whether or not they're public (with credentials, for a private file). Options: ``ids``, ``follow``.
 
+  Use it to find the links in particular files, like a document you're about to share or the files an audit flagged, or to walk from a public hub that no other source links to, like a folder of resources shared by email.
+
 Every source also takes ``name`` and ``bare_ids``.
 
 Write a source
