@@ -16,8 +16,8 @@ Built-in sources
   Only public repositories are read by default. If your organization keeps a public website's source in a private repository, set ``include_private = true``, with a ``GITHUB_TOKEN`` that can read the repositories. The links' locations are then pages that only your organization can open.
 ``csv``
   The links in a CSV file. Options: ``path``, and the columns ``url``, ``location`` and ``text``, and a ``separator`` for cells with several values.
-``drive``
-  Drive files by ID, read and walked whether or not they're public (with credentials, for a private file). Options: ``ids``, ``follow``.
+``google_drive``
+  Google Drive files by ID, read and walked whether or not they're public (with credentials, for a private file). Options: ``ids``, ``follow``. Each link's location is ``google_drive:ids``.
 
   Use it to find the links in particular files, like a document you're about to share or the files an audit flagged, or to walk from a public hub that no other source links to, like a folder of resources shared by email.
 
@@ -65,4 +65,4 @@ Then configure it like any other:
    type = "issues"
    repo = "example/project"
 
-A source that knows Drive IDs to read whatever their check can add them to ``self.follow``. A source that skips files for their size can count them in ``self.skipped_for_size``, for ``run.json``.
+A source that knows items to read whatever their check can add their keys (like ``google_drive:ID``) to ``self.follow``. For a platform's items by ID, subclass :class:`walkrightin.sources.platform.PlatformSource` and set ``platform``. A source that skips files for their size can count them in ``self.skipped_for_size``, for ``run.json``.

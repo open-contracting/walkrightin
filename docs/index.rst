@@ -8,6 +8,7 @@ walkrightin |release|
 
    usage
    sources
+   platforms
    api/index
    contributing/index
    changelog
