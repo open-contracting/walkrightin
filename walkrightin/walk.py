@@ -162,17 +162,17 @@ class Run:
         self.shortlinks.save(self.shortlinks_cache)
 
     def row(self, source, link, depth):
-        """Return the links.csv row for a link, or None if it doesn't lead to Drive."""
+        """Return the links.csv row for a link, or None if it doesn't lead to Drive and has no note to check it."""
         target, short = self.target(link.url)
-        if not target:
+        if not target and not link.note:
             return None
         return {
             **dataclasses.asdict(link),
             "source": source,
-            "target_url": target,
+            "target_url": target or "",
             "short_url": short,
-            "item_id": self.item_id(target),
-            "resource_key": resource_key(target),
+            "item_id": self.item_id(target) if target else "",
+            "resource_key": resource_key(target) if target else "",
             "depth": depth,
         }
 
@@ -205,10 +205,11 @@ class Run:
         self.resolve(found)
         rows = [r for args in found if (r := self.row(*args))]
         # Each URL is checked as found, with only the resource key it carries.
-        results = self.checker.check_all(r["target_url"] for r in rows)
+        results = self.checker.check_all(r["target_url"] for r in rows if r["target_url"])
         for r in rows:
-            r["url_status"] = results[r["target_url"]]["status"]
-            r["http"] = results[r["target_url"]]["http"]
+            if r["target_url"]:
+                r["url_status"] = results[r["target_url"]]["status"]
+                r["http"] = results[r["target_url"]]["http"]
         linked = {r["item_id"] for r in rows + kept if r["part"] != "bare_id"}
         # Most strings that look like IDs aren't, so Drive must find them.
         rows = [r for r in rows if r["part"] != "bare_id" or (r["url_status"] in FOUND and r["item_id"] not in linked)]
