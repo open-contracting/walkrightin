@@ -33,6 +33,8 @@ class FakeGoogle:
         self.folders = children or {}
         self.comment_lists = comments or {}
         self.exported_as = []
+        self.read_as = []
+        self.inherited = {}
 
     def users_for(self, owner=""):
         return self.subjects
@@ -42,8 +44,9 @@ class FakeGoogle:
             return "staff@example.org", {"id": file_id, **self.files[file_id]}
         return None, None
 
-    def link_role(self, user, file_id):
-        return self.roles.get(file_id, "?")
+    def link(self, user, file_id):
+        self.read_as.append((user, file_id))
+        return self.roles.get(file_id, "?"), self.inherited.get(file_id, "")
 
     @contextmanager
     def export(self, user, file_id, mime_type, key="", *, text=False):
@@ -76,7 +79,7 @@ class FakeGoogle:
         return None, "no API"
 
 
-def make_run(tmp_path, google, statuses, sources=None, walk=None, check=None, **kwargs):
+def make_run(tmp_path, google, statuses, sources=None, walk=None, check=None, google_config=None, **kwargs):
     seeds = tmp_path / "seeds.csv"
     if not seeds.exists():
         seeds.write_text(f"url,location\n{DOC_URL},https://example.org/page\n")
@@ -85,14 +88,13 @@ def make_run(tmp_path, google, statuses, sources=None, walk=None, check=None, **
         "walk": {"channels": ["export", "comments"], **(walk or {})},
         "check": {"delay": 0, **(check or {})},
         "sources": sources or [{"type": "csv", "name": "seeds", "path": str(seeds)}],
+        "google": google_config or {},
     }
     walk_enabled = kwargs.pop("walk_enabled", True)
     run = Run(configuration.load(data=data), str(tmp_path / "out"), walk=walk_enabled, **kwargs)
     run.shortlinks = FakeShortLinks({"https://bit.ly/sheet": SHEET_URL})
     run.extractor.shortlinks = run.shortlinks
     run.google = google
-    if not kwargs.get("permissions"):
-        run.permissions = google.link_role
 
     def check(url):
         status = next((s for i, s in statuses.items() if i in url), "not_found")
@@ -231,33 +233,31 @@ def test_no_access_not_public(tmp_path):
     assert read(tmp_path, "scans.csv") == []
 
 
-def test_also_follow_and_hooks(tmp_path):
+def test_also_follow_and_readers(tmp_path):
     ids = tmp_path / "ids.txt"
     ids.write_text(f"{DOC}\n")
+    readers = tmp_path / "drives.csv"
+    readers.write_text("user,driveid,label\norganizer@example.org,0ADrive,internal\n")
     google = credentialed()
     google.roles[DOC] = ""
-    readers = []
-
-    def reader(drive, owner):
-        readers.append((drive, owner))
-        return "organizer@example.org"
-
-    def permissions(user, file_id):
-        assert user == "organizer@example.org"
-        return google.roles.get(file_id, "?")
+    google.files[DOC]["driveId"] = "0ADrive"
+    google.files[FOLDER_ID]["driveId"] = "0AOther"
+    google.inherited[FOLDER_ID] = "1ParentFolder"
 
     run = make_run(
         tmp_path,
         google,
         {},
         walk={"also_follow": str(ids), "max_folder_children": 0},
-        reader=reader,
-        permissions=permissions,
+        google_config={"drive_readers": str(readers), "domain": "example.org"},
     )
     run.execute()
 
-    assert items(tmp_path)[DOC]["followed"] == "1"
-    assert readers[0] == ("", "staff@example.org")
+    found = items(tmp_path)
+    assert found[DOC]["followed"] == "1"
+    assert found[FOLDER_ID]["link_from"] == "1ParentFolder"
+    # The drive's reader, else (for an unlisted drive) whoever can see the item.
+    assert google.read_as[:2] == [("organizer@example.org", DOC), ("staff@example.org", FOLDER_ID)]
 
 
 def test_comments(tmp_path):

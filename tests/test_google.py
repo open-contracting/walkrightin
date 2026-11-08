@@ -239,3 +239,33 @@ def test_disposition_ext():
     assert google.disposition_ext('attachment; filename="Report 2020.PDF"') == "pdf"
     assert google.disposition_ext("attachment; filename*=UTF-8''r%C3%A9sum%C3%A9.docx") == "docx"
     assert google.disposition_ext("") == ""
+
+
+def test_link(monkeypatch):
+    responses = {
+        "unreadable": [],
+        "none": [{"id": "1", "type": "user", "role": "writer"}],
+        "my drive": [{"id": "anyoneWithLink", "type": "anyone", "role": "reader"}],
+        "own": [
+            {
+                "type": "anyone",
+                "role": "writer",
+                "permissionDetails": [{"inherited": True, "inheritedFrom": "F"}, {"inherited": False}],
+            }
+        ],
+        "inherited": [
+            {"type": "anyone", "role": "reader", "permissionDetails": [{"inherited": True, "inheritedFrom": "F"}]}
+        ],
+    }
+    monkeypatch.setattr(
+        google.Google, "pages", lambda _self, _user, url, _key, _params: (responses[url.split("/")[-2]], "")
+    )
+    g = google.Google()
+
+    assert {key: g.link("user", key) for key in responses} == {
+        "unreadable": ("?", ""),
+        "none": ("", ""),
+        "my drive": ("reader", ""),
+        "own": ("writer", ""),
+        "inherited": ("reader", "F"),
+    }

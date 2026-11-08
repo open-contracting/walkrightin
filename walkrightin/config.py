@@ -57,6 +57,9 @@ class Google:
     domain: str | None = None
     #: The scopes that the service account's domain-wide delegation authorizes. Read-only Drive is enough.
     scopes: list = field(default_factory=lambda: ["https://www.googleapis.com/auth/drive.readonly"])
+    #: A CSV with ``driveid`` and ``user`` columns: the user to read each shared drive's permissions as, like an
+    #: organizer, since a viewer sees none.
+    drive_readers: str | None = None
 
 
 @dataclass
@@ -86,7 +89,7 @@ def table(cls, data, name):
 
 
 # The options, by table, that are paths, resolved relative to the config file.
-PATHS = {"walk": ("also_follow", "aliases")}
+PATHS = {"walk": ("also_follow", "aliases"), "google": ("drive_readers",)}
 SOURCE_PATHS = ("path",)
 
 

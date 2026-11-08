@@ -45,14 +45,14 @@ From Python:
 
    result = walkrightin.run(load("walkrightin.toml"), "runs/2026-11-07")
 
-``run()`` also accepts ``reader`` and ``permissions`` functions, to choose who reads an item's permissions and how its link role is read. See :class:`walkrightin.walk.Run`.
+See :class:`walkrightin.walk.Run` for its other options.
 
 Anonymous and credentials modes
 -------------------------------
 
 Without ``[google]`` credentials, walkrightin reads public files through their public export and download URLs, so it reads exactly what the public can. It follows an item if it opens anonymously. It can't list folders, read comments, or use the Docs, Sheets and Slides APIs.
 
-With a service account that has domain-wide delegation, walkrightin reads each item's metadata as the first of ``subjects`` who can see it, and its link role as its owner (if in ``domain``) or that subject. It follows an item if it has an anyone-with-link role, or if its role can't be read and it opens anonymously, or if it's in ``also_follow``. It reads content as the subject who can see the item. An item that no subject can see is read anonymously, if it opens. The service account needs domain-wide delegation for ``scopes``: by default, Drive's read-only scope, which the Docs, Sheets and Slides APIs also accept. If its delegation authorizes only the full Drive scope, set ``scopes`` to that.
+With a service account that has domain-wide delegation, walkrightin reads each item's metadata as the first of ``subjects`` who can see it, and its link role as its shared drive's reader (in ``drive_readers``), or its owner (if in ``domain``), or that subject. A viewer who isn't an owner or organizer sees no permissions. ``items.csv`` records whether the link is the item's own or inherited, and from which folder. It follows an item if it has an anyone-with-link role, or if its role can't be read and it opens anonymously, or if it's in ``also_follow``. It reads content as the subject who can see the item. An item that no subject can see is read anonymously, if it opens. The service account needs domain-wide delegation for ``scopes``: by default, Drive's read-only scope, which the Docs, Sheets and Slides APIs also accept. If its delegation authorizes only the full Drive scope, set ``scopes`` to that.
 
 Configure
 ---------
@@ -87,6 +87,7 @@ Configure
    credentials = "~/key.json"         # or WALKRIGHTIN_CREDENTIALS
    subjects = ["staff@example.org"]
    domain = "example.org"
+   drive_readers = "drives.csv"       # driveid,user: an organizer of each shared drive
    scopes = ["https://www.googleapis.com/auth/drive.readonly"]
 
    [[sources]]
@@ -125,7 +126,7 @@ Outputs
 ``links.csv``
   Each link to Drive: its ``source`` (or ``walk`` for a link in a Drive file), ``location``, ``part`` (body, header, footnote, chip, suggestion, cell, note, comment, resolved_comment, speaker_notes, script, html_comment, attribute:NAME, folder_child, bare_id, ...), ``container`` (a tab, cell, slide or comment), ``visibility`` (visible, hidden, very_hidden, source_only), ``channel``, ``url`` as found, ``text``, ``note``, the anonymous check of a source's URL as found (``url_status``, ``http``), the Drive URL it leads to (``target_url``, and ``short_url`` if through a short link), ``item_id``, ``resource_key`` and ``depth``.
 ``items.csv``
-  Each item reached: its anonymous check (``status``, ``http``, ``checked_at``), ``depth``, ``linked_from``, whether it was ``followed``, and with credentials, its ``link_role`` ("" for none, "?" if unreadable), who could read it (``read_as``) and its metadata.
+  Each item reached: its anonymous check (``status``, ``http``, ``checked_at``), ``depth``, ``linked_from``, whether it was ``followed``, and with credentials, its ``link_role`` ("" for none, "?" if unreadable), the folder it's inherited from (``link_from``, if not its own), who could read it (``read_as``) and its metadata.
 ``scans.csv``
   Each read of an item, by channel: who read it, whether it succeeded, its error, its number of links, and any note.
 ``comments.csv``

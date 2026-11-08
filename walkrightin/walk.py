@@ -70,14 +70,12 @@ class Run:
     """
     One run into ``out``, a directory.
 
-    ``reader(drive_id, owner)`` returns the user to read an item's permissions as, or None. ``permissions(user, id)``
-    returns the item's anyone-with-link role, "" if it has none, or "?" if unreadable. Both default to Google's.
     With ``only`` (source names) and an existing run in ``out``, only those sources run again; the others' links are
     kept. With ``resume``, an interrupted walk continues from its last complete level. Without ``walk``, only the
     sources run, and their links are checked.
     """
 
-    def __init__(self, config, out, *, reader=None, permissions=None, only=None, resume=False, walk=True):
+    def __init__(self, config, out, *, only=None, resume=False, walk=True):
         self.config = config
         self.out = out
         self.only = set(only or ())
@@ -109,8 +107,7 @@ class Run:
         )
         gc = config.google
         self.google = g.Google(gc.credentials, gc.subjects, gc.domain, gc.scopes, user_agent=config.check.user_agent)
-        self.reader = reader or self.default_reader
-        self.permissions = permissions or self.google.link_role
+        self.drive_readers = self.read_drive_readers(gc.drive_readers)
         self.max_download = config.walk.max_download_mb * 2**20
         self.folder_limit = config.folder_limit
         self.channels = set(config.walk.channels)
@@ -137,8 +134,21 @@ class Run:
         with Path(path).open(newline="") as f:
             return {r["published_id"]: r["file_id"] for r in csv.DictReader(f)}
 
-    def default_reader(self, drive, owner):  # noqa: ARG002 # as drive-sharing's reader(), which uses the drive
-        """Return the owner, if in the domain, or None to read as whoever can see the item."""
+    @staticmethod
+    def read_drive_readers(path):
+        if not path:
+            return {}
+        with Path(path).open(newline="") as f:
+            return {r["driveid"]: r["user"] for r in csv.DictReader(f)}
+
+    def reader(self, drive, owner):
+        """
+        Return the user to read an item's permissions as: its shared drive's reader, or its owner if in the domain.
+
+        Return None to read as whoever can see the item.
+        """
+        if drive:
+            return self.drive_readers.get(drive)
         users = self.google.users_for(owner)
         return owner if owner and users and users[0] == owner else None
 
@@ -253,7 +263,7 @@ class Run:
                     version=info.get("md5Checksum") or info.get("headRevisionId") or info.get("modifiedTime", ""),
                     resource_key=info.get("resourceKey") or key,
                 )
-                m["link_role"] = self.permissions(self.reader(m["drive_id"], owner) or user, item_id)
+                m["link_role"], m["link_from"] = self.google.link(self.reader(m["drive_id"], owner) or user, item_id)
             else:
                 m["error"] = "no access"
         if not self.google.credentialed or self.config.check.items == "all" or m["link_role"] == "?":

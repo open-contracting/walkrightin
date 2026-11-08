@@ -150,18 +150,34 @@ class Google:
                 return user, f
         return None, None
 
-    def link_role(self, user, file_id):
-        """Return the item's anyone-with-link role, "" if it has none, or "?" if its permissions can't be read."""
+    def link(self, user, file_id):
+        """
+        Return (the item's anyone-with-link role, the folder it's inherited from or "").
+
+        The role is "" if the item has no link, or "?" if its permissions can't be read. A link that is the item's own,
+        as well as its folder's, isn't inherited.
+        """
         permissions, error = self.pages(
             user,
             f"{DRIVE_API}/files/{file_id}/permissions",
             "permissions",
-            {"fields": "nextPageToken,permissions(id,type,role)", "supportsAllDrives": "true", "pageSize": 100},
+            {
+                "fields": "nextPageToken,permissions(id,type,role,permissionDetails(inherited,inheritedFrom))",
+                "supportsAllDrives": "true",
+                "pageSize": 100,
+            },
         )
         # A viewer who isn't the owner sees no permissions.
         if error or not permissions:
-            return "?"
-        return next((p["role"] for p in permissions if p.get("type") == "anyone"), "")
+            return "?", ""
+        permission = next((p for p in permissions if p.get("type") == "anyone"), None)
+        if not permission:
+            return "", ""
+        # Outside shared drives, permissions have no details, and are the item's own.
+        details = permission.get("permissionDetails") or [{}]
+        if any(not d.get("inherited") for d in details):
+            return permission["role"], ""
+        return permission["role"], details[0].get("inheritedFrom", "")
 
     @contextmanager
     def export(self, user, file_id, mime_type, key="", *, text=False):
