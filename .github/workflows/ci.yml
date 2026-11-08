@@ -23,7 +23,7 @@ jobs:
       - if: matrix.os == 'macos-latest'
         run: brew install qpdf poppler
       - run: pip install .[test]
-      - run: coverage run --source=walkrightin pytest -W error
+      - run: coverage run --source=walkrightin -m pytest -W error
       - uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.1
         with:
           fail_ci_if_error: true

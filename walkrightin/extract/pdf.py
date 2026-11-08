@@ -57,10 +57,10 @@ def read(path, data):
     missing = [tool for tool in ("qpdf", "pdftotext") if not shutil.which(tool)]
     if missing:
         return "", f"{' and '.join(missing)} not installed", []
-    qpdf = subprocess.run(["qpdf", "--json", "--json-key=qpdf", path], capture_output=True, check=False)
+    qpdf = subprocess.run(["qpdf", "--json", "--json-key=qpdf", path], capture_output=True, check=False)  # noqa: S603, S607
     # By default, pdftotext drops a hyphen that ends a line and joins the lines, which alters a URL.
-    pdftotext = subprocess.run(
-        ["pdftotext", "-q", "-remove-hyphens", "none", path, "-"],
+    pdftotext = subprocess.run(  # noqa: S603
+        ["pdftotext", "-q", "-remove-hyphens", "none", path, "-"],  # noqa: S607
         capture_output=True,
         check=False,
     )

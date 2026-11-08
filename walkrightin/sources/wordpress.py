@@ -56,8 +56,8 @@ class WordPressSource(Source):
             return pymysql.connect(host=self.host, port=self.port, **options)
         socket = (
             self.socket
-            or subprocess.run(
-                ["mysql", f"-u{self.user}", "-N", "-sse", "SELECT @@socket"],
+            or subprocess.run(  # noqa: S603
+                ["mysql", f"-u{self.user}", "-N", "-sse", "SELECT @@socket"],  # noqa: S607
                 capture_output=True,
                 text=True,
                 check=True,

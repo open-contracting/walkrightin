@@ -64,15 +64,15 @@ class GitHubSource(Source):
         directory = os.path.join(self.clones, repo + (f"@{branch}" if branch else ""))
         if os.path.exists(directory):
             ref = branch or "HEAD"
-            subprocess.run(["git", "-C", directory, "fetch", "-q", "--depth", "1", "origin", ref], check=True)
-            subprocess.run(["git", "-C", directory, "reset", "-q", "--hard", "FETCH_HEAD"], check=True)
+            subprocess.run(["git", "-C", directory, "fetch", "-q", "--depth", "1", "origin", ref], check=True)  # noqa: S603, S607
+            subprocess.run(["git", "-C", directory, "reset", "-q", "--hard", "FETCH_HEAD"], check=True)  # noqa: S603, S607
         else:
             options = ["--branch", branch] if branch else []
             url = f"https://github.com/{repo}.git"
-            subprocess.run(["git", "clone", "-q", "--depth", "1", *options, url, directory], check=True)
+            subprocess.run(["git", "clone", "-q", "--depth", "1", *options, url, directory], check=True)  # noqa: S603, S607
         if not branch:
-            out = subprocess.run(
-                ["git", "-C", directory, "ls-remote", "--symref", "origin", "HEAD"],
+            out = subprocess.run(  # noqa: S603
+                ["git", "-C", directory, "ls-remote", "--symref", "origin", "HEAD"],  # noqa: S607
                 capture_output=True,
                 check=True,
             )
@@ -81,7 +81,7 @@ class GitHubSource(Source):
 
     def files(self, directory):
         """Yield (path, Links) for each tracked text file and document in the clone."""
-        out = subprocess.run(["git", "-C", directory, "ls-files", "-z"], capture_output=True, check=True)
+        out = subprocess.run(["git", "-C", directory, "ls-files", "-z"], capture_output=True, check=True)  # noqa: S603, S607
         for path in out.stdout.decode().split("\0"):
             full = os.path.join(directory, path)
             if not path or not os.path.isfile(full) or os.path.islink(full):
