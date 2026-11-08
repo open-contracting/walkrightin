@@ -65,15 +65,20 @@ SHEET_FIELDS = (
 )
 CHUNK = 2**20
 # Credentialed requests retry rate limits and server errors, with exponential backoff (0, 2, 4, 8, 16 s, plus jitter).
+# https://developers.google.com/workspace/drive/api/guides/limits#exponential
 RETRY = Retry(
     total=5,
     backoff_factor=1,
     backoff_jitter=1,
+    # https://developers.google.com/workspace/drive/api/guides/handle-errors#429-errors
+    # https://developers.google.com/workspace/drive/api/guides/handle-errors#5xx-errors
     status_forcelist=(429, 500, 502, 503, 504),
     allowed_methods=("GET",),
     raise_on_status=False,
 )
 # Drive also signals rate limits by a 403 with these reasons, which only the body distinguishes from no access.
+# https://developers.google.com/workspace/drive/api/guides/handle-errors#rate-limit
+# https://developers.google.com/workspace/drive/api/guides/handle-errors#user-rate-limit
 RATE_LIMIT_REASONS = {"rateLimitExceeded", "userRateLimitExceeded"}
 RATE_LIMIT_DELAYS = (1, 2, 4, 8, 16)
 
