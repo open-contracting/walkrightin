@@ -7,6 +7,7 @@ from contextlib import contextmanager
 import pytest
 
 from walkrightin import config as configuration
+from walkrightin.model import Link
 from walkrightin.walk import Run
 
 from .conftest import DOC, FILE, SHEET, FakeShortLinks
@@ -319,6 +320,15 @@ def test_refresh_one_source(tmp_path):
 
     assert [(r["source"], r["item_id"]) for r in read(tmp_path, "links.csv")] == [("seeds", DOC), ("other", SHEET)]
     assert json.loads((tmp_path / "out" / "run.json").read_text())["refreshed"] == ["other"]
+
+
+def test_noted_link_without_target(tmp_path):
+    (tmp_path / "seeds.csv").write_text("url,location\nhttps://example.com/split,page\n")
+    run = make_run(tmp_path, FakeGoogle(), {}, walk_enabled=False)
+    link = Link("page", "https://example.com/split", note="check by hand: 'https://' ends a line")
+
+    assert run.row("files", link, 0)["target_url"] == ""
+    assert run.row("files", Link("page", "https://example.com/other"), 0) is None
 
 
 def test_no_walk(tmp_path):

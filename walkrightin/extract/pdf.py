@@ -58,12 +58,16 @@ def read(path, data):
     if missing:
         return "", f"{' and '.join(missing)} not installed", []
     qpdf = subprocess.run(["qpdf", "--json", "--json-key=qpdf", path], capture_output=True, check=False)  # noqa: S603, S607
-    # By default, pdftotext drops a hyphen that ends a line and joins the lines, which alters a URL.
-    pdftotext = subprocess.run(  # noqa: S603
-        ["pdftotext", "-q", "-remove-hyphens", "none", path, "-"],  # noqa: S607
-        capture_output=True,
-        check=False,
-    )
+    # By default, pdftotext drops a hyphen that ends a line and joins the lines, which alters a URL. An older Poppler
+    # lacks the option, and exits 99.
+    for options in (["-remove-hyphens", "none"], []):
+        pdftotext = subprocess.run(  # noqa: S603
+            ["pdftotext", "-q", *options, path, "-"],  # noqa: S607
+            capture_output=True,
+            check=False,
+        )
+        if pdftotext.returncode != 99:  # noqa: PLR2004
+            break
     try:
         targets = list(uris(json.loads(qpdf.stdout)))
     except ValueError:

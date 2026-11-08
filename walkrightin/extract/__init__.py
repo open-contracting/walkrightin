@@ -3,6 +3,7 @@
 import os
 import re
 import zipfile
+from urllib.parse import unquote
 
 from walkrightin.extract import markup, office, pdf
 from walkrightin.extract.text import find, link_texts
@@ -65,7 +66,8 @@ class Extractor:
         links = []
         for f in found:
             part, visibility = markup.place(f, spans) if spans else ("body", "visible")
-            text = " | ".join(dict.fromkeys(texts.get(f.url, [])))
+            # An href is percent-decoded, so a URL found with "%3D" matches an href with "=".
+            text = " | ".join(dict.fromkeys(texts.get(f.url, []) + texts.get(unquote(f.url), [])))
             links.append(Link("", f.url, text, **{"part": part, "visibility": visibility, **fields}))
         if self.bare_ids:
             linked = {drive_id(f.url) for f in found}

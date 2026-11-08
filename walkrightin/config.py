@@ -50,6 +50,8 @@ class Google:
     subjects: list = field(default_factory=list)
     #: An owner in this domain is tried first.
     domain: str | None = None
+    #: The scopes that the service account's domain-wide delegation authorizes. Read-only Drive is enough.
+    scopes: list = field(default_factory=lambda: ["https://www.googleapis.com/auth/drive.readonly"])
 
 
 @dataclass

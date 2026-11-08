@@ -5,3 +5,5 @@ jobs:
     uses: open-contracting/.github/.github/workflows/lint.yml@main
     permissions:
       contents: read
+    with:
+      standard-maintenance-scripts-extras: google,wordpress

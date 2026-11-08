@@ -97,6 +97,14 @@ def test_wordpress(context, monkeypatch):
         (1, "post_content", f'<p><a href="{DOC_URL}">Doc</a></p>'),
         (2, "acf_link", f's:5:"title";s:6:"Report";s:3:"url";s:{len(FILE_URL)}:"{FILE_URL}";'),
         (3, "block", f'{{"title":"Same","url":"{ESCAPED_DOC_URL}"}}'),
+        (
+            4,
+            "post_content",
+            (
+                f'{{"link":{{"title":"Deep dive","url":"{ESCAPED_DOC_URL}"}},'
+                f'"buttons_0_link":{{"title":"VIEW \\u00e1","url":"{ESCAPED_DOC_URL}"}}}}'
+            ),
+        ),
     ]
     monkeypatch.setattr(WordPressSource, "rows", lambda _self: iter(rows))
 
@@ -106,4 +114,5 @@ def test_wordpress(context, monkeypatch):
         ("wp:1/post_content", DOC_URL, "Doc"),
         ("wp:2/acf_link", FILE_URL, "Report"),
         ("wp:3/block", DOC_URL, "Same"),
+        ("wp:4/post_content", DOC_URL, "Deep dive | VIEW á"),
     ]
