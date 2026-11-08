@@ -23,9 +23,11 @@ class FakeSession:
     def __init__(self, responses):
         self.responses = responses
         self.requested = []
+        self.user_agents = []
 
     def get(self, url, **kwargs):
         self.requested.append(url)
+        self.user_agents.append(kwargs.get("headers", {}).get("User-Agent"))
         return self.responses[url]
 
 
@@ -111,3 +113,16 @@ def test_shortlinks_domains():
     assert not shortlinks.is_short("[r]")
     assert not ShortLinks().is_short("https://youtu.be/x")
     assert [m.group() for m in shortlinks.finditer("see ocp.click/a and xocp.click/b")] == ["ocp.click/a"]
+
+
+def test_user_agents():
+    view = DOC_URL.replace("/edit", "/view")
+    session = FakeSession({DOC_URL: response(200), view: response(200), "https://bit.ly/y": response(200)})
+
+    Checker(delay=0, session=session).check(DOC_URL)
+    Checker(delay=0, session=session, user_agent="Custom/1.0").check(view)
+    ShortLinks(session=session).follow("bit.ly/y")
+
+    assert session.user_agents[0] == "Mozilla/5.0"
+    assert session.user_agents[1] == "Custom/1.0"
+    assert session.user_agents[2].startswith("walkrightin/")

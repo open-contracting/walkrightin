@@ -13,7 +13,7 @@ import requests
 from walkrightin import google as g
 from walkrightin.check import Checker, now
 from walkrightin.extract import Extractor
-from walkrightin.model import FOUND, Link, opens
+from walkrightin.model import FOUND, IDENTITY, Link, opens
 from walkrightin.output import (
     COMMENT_FIELDS,
     ITEM_FIELDS,
@@ -88,6 +88,7 @@ class Run:
         cache = Path(config.cache_dir)
         cache.mkdir(parents=True, exist_ok=True)
         self.session = requests.Session()
+        self.session.headers["User-Agent"] = IDENTITY
         self.shortlinks = ShortLinks(
             config.short_links.domains,
             config.short_links.extra_domains,
@@ -104,9 +105,10 @@ class Run:
             concurrency=config.check.concurrency,
             delay=config.check.delay,
             session=self.session,
+            user_agent=config.check.user_agent,
         )
         gc = config.google
-        self.google = g.Google(gc.credentials, gc.subjects, gc.domain, gc.scopes)
+        self.google = g.Google(gc.credentials, gc.subjects, gc.domain, gc.scopes, user_agent=config.check.user_agent)
         self.reader = reader or self.default_reader
         self.permissions = permissions or self.google.link_role
         self.max_download = config.walk.max_download_mb * 2**20

@@ -1,6 +1,12 @@
 """Records passed between sources, extractors, the walk and the outputs."""
 
 from dataclasses import dataclass
+from importlib.metadata import version
+
+# The User-Agent of requests that don't need to look like a visitor's, like GitHub's API and short links'.
+IDENTITY = f"walkrightin/{version('walkrightin')} (+https://github.com/open-contracting/walkrightin)"
+# The User-Agent of anonymous requests to Drive, which check what a visitor sees.
+VISITOR = "Mozilla/5.0"
 
 # How an anonymous visitor sees a URL.
 PUBLIC = "public"

@@ -76,6 +76,7 @@ Configure
    concurrency = 2
    delay = 1.0
    ttl_days = 7
+   user_agent = "Mozilla/5.0"         # for anonymous requests to Drive
 
    [short_links]
    extra_domains = ["example.click"]  # an organization's own shortener
@@ -103,6 +104,7 @@ Choices to know about:
 - **URLs without an identifier,** like a template (``/document/d/$``) or ``drive.google.com/drive/my-drive``, aren't links to an item, and are skipped.
 - **CSV files in Drive** aren't downloaded unless ``download_csv`` is set, because their URLs are usually data rather than links. A ``files`` source reads CSV files by default, in ``extensions``.
 - **Size limits.** Files over ``max_download_mb`` (in Drive) or ``max_text_kb`` (text files in repositories) aren't read. ``run.json`` counts them, by source, and ``scans.csv`` notes each skipped Drive file.
+- **User-Agent.** Anonymous requests to Drive send a browser's User-Agent (``user_agent``), so that Google answers as it would a visitor. Requests to short-link services and GitHub's API identify walkrightin, with a link to this repository.
 - **Forms** are checked but not read. **Version history** isn't read: viewers can't open it.
 
 Channels

@@ -33,6 +33,8 @@ class Check:
     concurrency: int = 2
     delay: float = 1.0
     ttl_days: int = 7
+    #: The User-Agent of anonymous requests to Drive. A browser's, so that Google answers as it would a visitor.
+    user_agent: str = "Mozilla/5.0"
 
 
 @dataclass

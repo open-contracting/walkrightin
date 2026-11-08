@@ -9,11 +9,10 @@ from urllib.parse import urljoin
 
 import requests
 
-from walkrightin.model import CLOSED_FORM, ERROR, GONE, NOT_FOUND, PUBLIC, RATE_LIMITED, REDIRECT, SIGNIN
+from walkrightin.model import CLOSED_FORM, ERROR, GONE, NOT_FOUND, PUBLIC, RATE_LIMITED, REDIRECT, SIGNIN, VISITOR
 from walkrightin.output import read_json, write_json
 from walkrightin.urls import check_url
 
-USER_AGENT = "Mozilla/5.0"
 MAX_REDIRECTS = 10
 
 
@@ -32,7 +31,10 @@ def throttled(url):
 class Checker:
     """Requests URLs anonymously, at most ``concurrency`` at once, waiting ``delay`` seconds before each."""
 
-    def __init__(self, cache_path=None, ttl_days=7, concurrency=2, delay=1.0, session=None, timeout=20):
+    def __init__(
+        self, cache_path=None, ttl_days=7, concurrency=2, delay=1.0, session=None, timeout=20, user_agent=VISITOR
+    ):
+        self.user_agent = user_agent
         self.cache_path = cache_path
         self.ttl = timedelta(days=ttl_days)
         self.concurrency = concurrency
@@ -75,7 +77,7 @@ class Checker:
 
     def get(self, url):
         response = self.session.get(
-            url, headers={"User-Agent": USER_AGENT}, allow_redirects=False, timeout=self.timeout, stream=True
+            url, headers={"User-Agent": self.user_agent}, allow_redirects=False, timeout=self.timeout, stream=True
         )
         response.close()
         return response

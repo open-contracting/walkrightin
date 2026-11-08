@@ -7,6 +7,7 @@ from urllib.parse import parse_qs, unquote, urljoin, urlsplit
 import requests
 from antispam_link_shorteners import link_shorteners_list
 
+from walkrightin.model import IDENTITY
 from walkrightin.output import read_json, write_json
 from walkrightin.urls import DRIVE, END, normalize_short
 
@@ -14,7 +15,6 @@ from walkrightin.urls import DRIVE, END, normalize_short
 # "microsoft.co/".
 CANDIDATE = re.compile(rf"(?<![\w.@-])(?:https?://)?(?:www\.)?((?:[a-z0-9-]+\.)+[a-z]{{2,}})/{END}", re.IGNORECASE)
 MAX_REDIRECTS = 10
-USER_AGENT = "Mozilla/5.0"
 # Shorteners in the built-in list that lead only to their own site, never to Drive.
 SINGLE_SITE = {
     "a.co",
@@ -39,7 +39,10 @@ class ShortLinks:
     The default domains are antispam-link-shorteners' list, without SINGLE_SITE. ``domains`` replaces them.
     """
 
-    def __init__(self, domains=None, extra_domains=(), exclude_domains=(), session=None, timeout=20):
+    def __init__(
+        self, domains=None, extra_domains=(), exclude_domains=(), session=None, timeout=20, user_agent=IDENTITY
+    ):
+        self.user_agent = user_agent
         base = set(link_shorteners_list()) - SINGLE_SITE if domains is None else {d.lower() for d in domains}
         self.domains = (base | {d.lower() for d in extra_domains}) - {d.lower() for d in exclude_domains}
         self.session = session or requests.Session()
@@ -93,7 +96,7 @@ class ShortLinks:
             try:
                 response = self.session.get(
                     current,
-                    headers={"User-Agent": USER_AGENT},
+                    headers={"User-Agent": self.user_agent},
                     allow_redirects=False,
                     timeout=self.timeout,
                     stream=True,

@@ -14,6 +14,7 @@ from pathlib import Path
 
 import requests
 
+from walkrightin.model import VISITOR
 from walkrightin.urls import FOLDER
 
 DRIVE_API = "https://www.googleapis.com/drive/v3"
@@ -58,7 +59,6 @@ SHEET_FIELDS = (
     "sheets(properties(sheetId,title,hidden),data(startRow,startColumn,rowData/values("
     "userEnteredValue,textFormatRuns,userEnteredFormat/textFormat/link,chipRuns,note)))"
 )
-USER_AGENT = "Mozilla/5.0"
 CHUNK = 2**20
 
 
@@ -74,7 +74,8 @@ class Google:
     read-only scope, which the Docs, Sheets and Slides APIs also accept. ``subjects`` are the users to act as.
     """
 
-    def __init__(self, credentials=None, subjects=(), domain=None, scopes=SCOPES, timeout=300):
+    def __init__(self, credentials=None, subjects=(), domain=None, scopes=SCOPES, timeout=300, user_agent=VISITOR):
+        self.user_agent = user_agent
         self.key_file = Path(credentials).expanduser() if credentials else None
         self.scopes = list(scopes)
         self.subjects = list(subjects)
@@ -95,7 +96,7 @@ class Google:
         if user not in sessions:
             if user is None:
                 sessions[user] = requests.Session()
-                sessions[user].headers["User-Agent"] = USER_AGENT
+                sessions[user].headers["User-Agent"] = self.user_agent
             else:
                 from google.auth.transport.requests import AuthorizedSession  # noqa: PLC0415
                 from google.oauth2 import service_account  # noqa: PLC0415
