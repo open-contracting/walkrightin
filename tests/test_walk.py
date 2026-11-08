@@ -10,7 +10,7 @@ from walkrightin import config as configuration
 from walkrightin.model import Link
 from walkrightin.walk import Run
 
-from .conftest import DOC, FILE, SHEET, FakeShortLinks
+from .conftest import DOC, FILE, SHEET, FakeShortLinks, needs_pdf_tools, pdf
 
 FOLDER_ID = "1FoLdErFoLdErFoLdErFoLdErFoLdEr12"
 CHILD = "1ChIlDcHiLdChIlDcHiLdChIlDcHiLd34"
@@ -328,6 +328,22 @@ def test_noted_link_without_target(tmp_path):
 
     assert run.row("files", link, 0)["target_url"] == ""
     assert run.row("files", Link("page", "https://example.com/other"), 0) is None
+
+
+@needs_pdf_tools
+def test_noted_link_in_run(tmp_path):
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    (uploads / "a.pdf").write_bytes(pdf(["Visit https://", "example.com/page", "and read the guide.", DOC_URL]))
+    sources = [{"type": "files", "name": "uploads", "path": str(uploads)}]
+
+    result = make_run(tmp_path, FakeGoogle(), {DOC: "public"}, sources=sources, walk_enabled=False).execute()
+
+    assert result.links == 2
+    assert sorted((r["url_status"], r["note"][:13]) for r in read(tmp_path, "links.csv")) == [
+        ("", "check by hand"),
+        ("public", ""),
+    ]
 
 
 def test_no_walk(tmp_path):

@@ -175,6 +175,8 @@ class Run:
             "short_url": short,
             "item_id": self.item_id(target) if target else "",
             "resource_key": resource_key(target) if target else "",
+            "url_status": "",
+            "http": "",
             "depth": depth,
         }
 
