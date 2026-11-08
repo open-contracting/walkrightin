@@ -374,3 +374,7 @@ def test_blank_xlsx_cell(extractor, tmp_path):
     cells = {link.url: link.visibility for link in links if link.part == "cell"}
 
     assert cells == {DOC_URL: "blank", FILE_URL: "visible"}
+
+
+def test_blank_rst_shows_url(extractor):
+    assert visibilities(extractor.text(f"Policy. ` <{DOC_URL}>`_", "rst")) == {DOC_URL: ("visible", "")}

@@ -112,6 +112,12 @@ def link_texts(text, shortlinks, patterns=(MD_LINK, HTML_LINK, RST_LINK), wrappe
     for pattern in patterns:
         for m in pattern.finditer(text):
             label, href = (m.group(2), m.group(1)) if pattern is HTML_LINK else (m.group(1), m.group(2))
-            label = html_label(label) if pattern is HTML_LINK else label.strip()
+            if pattern is HTML_LINK:
+                label = html_label(label)
+            elif pattern is RST_LINK:
+                # reStructuredText shows the URL if a link has no text.
+                label = label.strip() or None
+            else:
+                label = label.strip()
             texts.setdefault(normalize_href(href, shortlinks, wrappers), []).append(label)
     return texts
