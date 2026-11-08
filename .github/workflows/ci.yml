@@ -24,7 +24,7 @@ jobs:
         run: brew install qpdf poppler
       - run: pip install .[test]
       - run: coverage run --source=walkrightin -m pytest -W error
-      - uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.1
+      - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           fail_ci_if_error: true
   # Without `if: always()`, a failed `test` would skip `build`, and a skipped job satisfies a required status check.
