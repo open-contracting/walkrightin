@@ -1,11 +1,11 @@
 import dataclasses
-import html
 import re
 import subprocess
 
-from walkrightin.extract.text import normalize_href
+from walkrightin.extract.text import normalize_href, text_of
 from walkrightin.model import Link
 from walkrightin.sources import Source
+from walkrightin.urls import clean
 
 POST_TYPES = ("post", "page", "nav_menu_item", "wp_navigation", "wp_block")
 # Link fields as PHP serializes them (ACF) and as JSON stores them (block attributes).
@@ -94,13 +94,14 @@ class WordPressSource(Source):
             yield from (row for row in cursor.fetchall() if row[2])
 
     def field_links(self, text):
-        """Return {URL: title} for the link fields in the text."""
+        """Return {URL: [title]} for the link fields in the text. A block can link a URL from several fields."""
         out = {}
+        text = clean(text)
         for pattern in (SERIALIZED_LINK, JSON_LINK):
             for title, value in pattern.findall(text):
-                url = normalize_href(value.replace("\\/", "/"), self.extractor.shortlinks)
-                if self.extractor.is_link(url):
-                    out.setdefault(url, html.unescape(title))
+                url = normalize_href(value, self.extractor.shortlinks)
+                if self.extractor.is_link(url) and (label := text_of(title)):
+                    out.setdefault(url, []).append(label)
         return out
 
     def links(self):
@@ -109,7 +110,7 @@ class WordPressSource(Source):
             found = self.extractor.text(text, "html")
             titles = self.field_links(text)
             for link in found:
-                yield dataclasses.replace(link, location=location, text=link.text or titles.pop(link.url, ""))
-            for url, title in titles.items():
-                if url not in {link.url for link in found}:
-                    yield Link(location, url, title)
+                texts = [*link.text.split(" | "), *titles.pop(link.url, [])] if link.text else titles.pop(link.url, [])
+                yield dataclasses.replace(link, location=location, text=" | ".join(dict.fromkeys(texts)))
+            for url, texts in titles.items():
+                yield Link(location, url, " | ".join(dict.fromkeys(texts)))
