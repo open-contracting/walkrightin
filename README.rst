@@ -2,7 +2,7 @@
 
 Audit the websites, uploads and repositories that your organization publishes, to find the files they link to on platforms like Google Drive, directly or through other files, and check whether each opens to anyone with the link. walkrightin requests only public URLs, plus whatever your own credentials can read.
 
-Sources are plugins: a WordPress site's database, a directory of files (like a website's uploads), GitHub organizations' repositories, a CSV of links, and a platform's files by ID. Each yields where a link was found, its URL and its text. Platforms are plugins too: each recognizes its URLs, checks them as an anonymous visitor would, and reads its items to find more links. walkrightin follows short links (bit.ly, forms.gle, etc.), checks each platform URL, then walks the items that the links reach: on Google Drive, the Docs, Sheets, Slides, Drawings, forms, published documents, PDF and Office files, Colab notebooks, and folders.
+Sources are plugins: a WordPress site's database, a directory of files (like a website's uploads), GitHub organizations' repositories, a CSV of links, and a platform's files by ID. Each yields where a link was found, its URL and its text. Platforms are plugins too: each recognizes its URLs, checks them as an anonymous visitor would, and reads its items to find more links. walkrightin follows short links (bit.ly, forms.gle, etc.), checks each platform URL, then walks the items that the links reach: on Google Drive, the Docs, Sheets, Slides, Drawings, forms, published documents, PDF, Office and OpenDocument files, Colab notebooks, and folders.
 
 .. code-block:: bash
 

@@ -8,12 +8,12 @@ from walkrightin.sources import Source
 
 logger = logging.getLogger(__name__)
 
-EXTENSIONS = (".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".csv")
+EXTENSIONS = (".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".odt", ".odp", ".ods", ".csv")
 
 
 class FilesSource(Source):
     """
-    The files in a directory, like a website's uploads: PDF, Word, PowerPoint, Excel and CSV files by default.
+    The files in a directory, like a website's uploads: PDF, Office, OpenDocument and CSV files by default.
 
     Each link's location is ``location_prefix`` plus the file's path relative to ``path``.
     """

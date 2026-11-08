@@ -1,4 +1,4 @@
-"""Read Office files: Word, PowerPoint and Excel files' XML, each spreadsheet tab's links, and old binary files."""
+"""Read Office and OpenDocument files: their XML, each spreadsheet tab's links, and old binary Office files."""
 
 import html
 import re
@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 VISIBILITY = {"visible": "visible", "hidden": "hidden", "veryHidden": "very_hidden"}
+ODS = b"application/vnd.oasis.opendocument.spreadsheet"
 
 
 def contents(path):
@@ -34,15 +35,33 @@ def attr(tag, name):
     return m.group(1) if m else None
 
 
+def column(n):
+    """Return a spreadsheet column's letters, from its 0-based number."""
+    letters = ""
+    n += 1
+    while n:
+        n, r = divmod(n - 1, 26)
+        letters = chr(65 + r) + letters
+    return letters
+
+
+def strings(markup):
+    """Return the text of XML."""
+    return html.unescape(re.sub(r"<[^>]+>", "", markup))
+
+
 def sheet_cells(path):
     """
-    Yield (tab, tab visibility, cell, URL, text) for each spreadsheet cell's link.
+    Yield (tab, tab visibility, cell, URL, text) for each spreadsheet cell's link, in an XLSX or ODS file.
 
     The links are HYPERLINK formulas, the cell hyperlink list, and the cell's text (rich-text runs' links aren't in the
     hyperlink list, so URLs typed or linked in a cell's text are found there). Callers find URLs in the last.
     """
     z = zipfile.ZipFile(path)
     names = z.namelist()
+    if "mimetype" in names and z.read("mimetype").strip() == ODS:
+        yield from ods_cells(z.read("content.xml").decode("utf-8", "ignore"))
+        return
     if "xl/workbook.xml" not in names:
         return
     wb = z.read("xl/workbook.xml").decode()
@@ -92,3 +111,40 @@ def sheet_cells(path):
                 yield name, visibility, ref, html.unescape(unquote(hyper[rid])), cells.get(ref, "")
         for ref, text in cells.items():
             yield name, visibility, ref, None, text
+
+
+def ods_cells(content):
+    """Yield (tab, tab visibility, cell, URL, text) for each link in an ODS file's content.xml."""
+    hidden = {
+        attr(attrs, "style:name")
+        for attrs, body in re.findall(r"<style:style\b([^>]*)>(.*?)</style:style>", content, re.DOTALL)
+        if 'table:display="false"' in body
+    }
+    for attrs, table in re.findall(r"<table:table\s([^>]*)>(.*?)</table:table>", content, re.DOTALL):
+        name = html.unescape(attr(attrs, "table:name") or "")
+        visibility = "hidden" if attr(attrs, "table:style-name") in hidden else "visible"
+        row = 0
+        for row_attrs, cells in re.findall(
+            r"<table:table-row\b([^>]*?)(?:/>|>(.*?)</table:table-row>)", table, re.DOTALL
+        ):
+            col = 0
+            # Covered cells (under a merged cell) take a column, like other cells.
+            for cell_attrs, body in re.findall(
+                r"<table:(?:covered-)?table-cell\b([^>]*?)(?:/>|>(.*?)</table:(?:covered-)?table-cell>)",
+                cells,
+                re.DOTALL,
+            ):
+                ref = f"{column(col)}{row + 1}"
+                col += int(attr(cell_attrs, "table:number-columns-repeated") or 1)
+                formula = html.unescape(attr(cell_attrs, "table:formula") or "")
+                if not body and not formula:
+                    continue
+                text = "\n".join(strings(p) for p in re.findall(r"<text:p\b[^>]*>(.*?)</text:p>", body, re.DOTALL))
+                if f := re.search(r'HYPERLINK\("(.*?)"(?:\s*;\s*"(.*?)")?', formula):
+                    yield name, visibility, ref, unquote(f.group(1)), f.group(2) or text
+                for href, label in re.findall(
+                    r'<text:a\b[^>]*?xlink:href="([^"]*)"[^>]*>(.*?)</text:a>', body, re.DOTALL
+                ):
+                    yield name, visibility, ref, html.unescape(unquote(href)), strings(label)
+                yield name, visibility, ref, None, text
+            row += int(attr(row_attrs, "table:number-rows-repeated") or 1)

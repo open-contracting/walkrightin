@@ -8,7 +8,10 @@ from urllib.parse import unquote
 from walkrightin.urls import WRAPPERS, clean, normalize_short, strip, unwrap
 
 MD_LINK = re.compile(r"\[([^\]]+)\]\(\s*<?([^\s)>]+)")
-HTML_LINK = re.compile(r"""<a\b[^>]*?href\s*=\s*["']([^"']+)["'][^>]*>(.*?)</a>""", re.DOTALL | re.IGNORECASE)
+# An HTML link, or an OpenDocument link (text:a, with xlink:href).
+HTML_LINK = re.compile(
+    r"""<(?:text:)?a\b[^>]*?href\s*=\s*["']([^"']+)["'][^>]*>(.*?)</(?:text:)?a>""", re.DOTALL | re.IGNORECASE
+)
 RST_LINK = re.compile(r"`([^`<]+?)\s*<([^>`]+)>`_")
 
 

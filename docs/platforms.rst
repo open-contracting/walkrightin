@@ -36,7 +36,7 @@ Choices to know about:
 - **Forms** are read through their public page, which is what respondents see, and with credentials through the Forms API. A form that doesn't accept responses shows no one its questions: its page isn't read, and the API's links are ``hidden``.
 - **Published documents.** A published document's URL (``/d/e/...``) has no Drive ID. Unless ``aliases`` maps it to its file, it's an item of its own, whose key is ``google_drive:e:`` and its published ID. It's checked and read anonymously through its published page. Its owner is unknown, so it counts as an outside file.
 - **Colab notebooks** are downloaded, and their cells and text outputs read. A ``colab.research.google.com/drive/ID`` URL is checked as its Drive file, since Colab's page opens for anyone.
-- **Types not read** include images, video and My Maps. Drawings embedded in Docs aren't read: exports and the Docs API have only their image. **Version history** isn't read: viewers can't open it.
+- **Types not read** include images, video, My Maps and Apple iWork files. Drawings embedded in Docs aren't read: exports and the Docs API have only their image. **Version history** isn't read: viewers can't open it.
 
 Its channels:
 

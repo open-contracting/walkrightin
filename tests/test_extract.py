@@ -150,6 +150,58 @@ def test_xlsx_tabs(extractor, tmp_path):
     assert {link.url for link in links if link.part == "body"} == {DOC_URL, FILE_URL, SHEET_URL}
 
 
+def odf(path, mimetype, content):
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("mimetype", mimetype)
+        z.writestr("content.xml", f"<office:document-content>{content}</office:document-content>")
+
+
+def test_odt(extractor, tmp_path):
+    path = tmp_path / "file.odt"
+    odf(
+        path,
+        "application/vnd.oasis.opendocument.text",
+        f'<text:p>See <text:a xlink:type="simple" xlink:href="{DOC_URL}"><text:span>the doc</text:span></text:a>'
+        " and bit.ly/doc</text:p>",
+    )
+
+    links, error = extractor.file(str(path))
+
+    assert error == ""
+    assert {(link.url, link.text) for link in links} == {(DOC_URL, "the doc"), ("https://bit.ly/doc", "")}
+
+
+def test_ods_tabs(extractor, tmp_path):
+    path = tmp_path / "file.ods"
+    odf(
+        path,
+        "application/vnd.oasis.opendocument.spreadsheet",
+        '<office:automatic-styles><style:style style:name="ta1" style:family="table">'
+        '<style:table-properties table:display="true"/></style:style>'
+        '<style:style style:name="ta2" style:family="table"><style:table-properties table:display="false"/>'
+        "</style:style></office:automatic-styles>"
+        '<table:table table:name="Visible" table:style-name="ta1"><table:table-column/>'
+        '<table:table-row table:number-rows-repeated="2"><table:table-cell/></table:table-row>'
+        '<table:table-row><table:table-cell table:number-columns-repeated="2"/>'
+        f'<table:table-cell table:formula="of:=HYPERLINK(&quot;{DOC_URL}&quot;;&quot;Formula&quot;)">'
+        "<text:p>Formula</text:p></table:table-cell>"
+        f"<table:table-cell><text:p>typed {FILE_URL}</text:p></table:table-cell></table:table-row></table:table>"
+        '<table:table table:name="Secret" table:style-name="ta2"><table:table-row>'
+        f'<table:table-cell><text:p><text:a xlink:href="{SHEET_URL}">Linked</text:a></text:p></table:table-cell>'
+        "</table:table-row></table:table>",
+    )
+
+    links, error = extractor.file(str(path))
+    cells = {(link.url, link.container): link for link in links if link.part == "cell"}
+
+    assert error == ""
+    assert set(cells) == {(DOC_URL, "Visible!C3"), (FILE_URL, "Visible!D3"), (SHEET_URL, "Secret!A1")}
+    assert cells[(DOC_URL, "Visible!C3")].text == "Formula"
+    assert cells[(DOC_URL, "Visible!C3")].visibility == "visible"
+    assert cells[(SHEET_URL, "Secret!A1")].text == "Linked"
+    assert cells[(SHEET_URL, "Secret!A1")].visibility == "hidden"
+
+
 def test_legacy_office(extractor, tmp_path):
     path = tmp_path / "file.doc"
     path.write_bytes(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\0" * 8 + f"see {DOC_URL} ".encode("utf-16-le"))

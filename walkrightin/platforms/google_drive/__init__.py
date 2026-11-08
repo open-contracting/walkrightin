@@ -384,7 +384,7 @@ class GoogleDrive(Platform):
                 note = "skipped: larger than" if error.startswith("larger than") else ""
                 return [], error, note and f"{note} {max_mb} MB"
             if not user and not self.sniff(path):
-                return None, "", "not read: not a PDF, Office file or notebook"
+                return None, "", "not read: not a PDF, Office or OpenDocument file, or notebook"
             found, read_error = self.context.extractor.file(path)
         if m.get("version"):
             self.context.downloads[cache_key] = {
@@ -395,7 +395,7 @@ class GoogleDrive(Platform):
         return found, read_error, ""
 
     def sniff(self, path):
-        """Return whether an anonymous download is a type to read: a PDF, Office file or notebook."""
+        """Return whether an anonymous download is a type to read: a PDF, Office or OpenDocument file, or notebook."""
         with path.open("rb") as f:
             head = f.read(8)
         if head.startswith((b"%PDF-", b"PK\x03\x04", b"\xd0\xcf\x11\xe0")) or path.suffix == ".ipynb":

@@ -18,7 +18,7 @@ PAGE = re.compile(r"https://github\.com/([^/]+/[^/]+)/blob/([^/]+)/(.+)")
 
 class GitHubSource(Source):
     """
-    The tracked files of public GitHub repositories: text files, and PDF, Word, PowerPoint and Excel files.
+    The tracked files of public GitHub repositories: text files, and PDF, Office and OpenDocument files.
 
     ``orgs`` lists organizations, whose public repositories are read, including forks and archived ones. ``repos``
     lists other repositories, and ``exclude`` repositories not to read. Each repository's default branch is read, plus

@@ -21,7 +21,7 @@ KINDS = {
     ".rst": "rst",
 }
 # The documents to read as files rather than text.
-DOCUMENTS = (".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx")
+DOCUMENTS = (".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".odt", ".odp", ".ods")
 # Notes on links found in a PDF's text where a URL-like fragment ends a line.
 JOINED = "joined lines"
 TRUNCATED = "possibly truncated"
@@ -89,7 +89,7 @@ class Extractor:
         return links
 
     def file(self, path, **fields):
-        """Return (Links, error) for a PDF, an Office file, or another file read as text."""
+        """Return (Links, error) for a PDF, an Office or OpenDocument file, or another file read as text."""
         data = Path(path).read_bytes()
         if data.startswith(b"%PDF-"):
             return self.pdf(path, data, **fields)
