@@ -6,6 +6,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from walkrightin.model import IDENTITY
+
 CHANNELS = ("export", "api", "comments")
 
 
@@ -33,8 +35,8 @@ class Check:
     concurrency: int = 2
     delay: float = 1.0
     ttl_days: int = 7
-    #: The User-Agent of anonymous requests to Drive. A browser's, so that Google answers as it would a visitor.
-    user_agent: str = "Mozilla/5.0"
+    #: The User-Agent of anonymous requests to Drive, if not walkrightin's.
+    user_agent: str = IDENTITY
 
 
 @dataclass

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import requests
 
-from walkrightin.model import VISITOR
+from walkrightin.model import IDENTITY
 from walkrightin.urls import FOLDER
 
 DRIVE_API = "https://www.googleapis.com/drive/v3"
@@ -74,7 +74,7 @@ class Google:
     read-only scope, which the Docs, Sheets and Slides APIs also accept. ``subjects`` are the users to act as.
     """
 
-    def __init__(self, credentials=None, subjects=(), domain=None, scopes=SCOPES, timeout=300, user_agent=VISITOR):
+    def __init__(self, credentials=None, subjects=(), domain=None, scopes=SCOPES, timeout=300, user_agent=IDENTITY):
         self.user_agent = user_agent
         self.key_file = Path(credentials).expanduser() if credentials else None
         self.scopes = list(scopes)

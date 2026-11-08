@@ -123,6 +123,6 @@ def test_user_agents():
     Checker(delay=0, session=session, user_agent="Custom/1.0").check(view)
     ShortLinks(session=session).follow("bit.ly/y")
 
-    assert session.user_agents[0] == "Mozilla/5.0"
+    assert session.user_agents[0].startswith("walkrightin/")
     assert session.user_agents[1] == "Custom/1.0"
     assert session.user_agents[2].startswith("walkrightin/")

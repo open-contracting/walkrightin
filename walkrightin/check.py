@@ -9,7 +9,7 @@ from urllib.parse import urljoin
 
 import requests
 
-from walkrightin.model import CLOSED_FORM, ERROR, GONE, NOT_FOUND, PUBLIC, RATE_LIMITED, REDIRECT, SIGNIN, VISITOR
+from walkrightin.model import CLOSED_FORM, ERROR, GONE, IDENTITY, NOT_FOUND, PUBLIC, RATE_LIMITED, REDIRECT, SIGNIN
 from walkrightin.output import read_json, write_json
 from walkrightin.urls import check_url
 
@@ -32,7 +32,7 @@ class Checker:
     """Requests URLs anonymously, at most ``concurrency`` at once, waiting ``delay`` seconds before each."""
 
     def __init__(
-        self, cache_path=None, ttl_days=7, concurrency=2, delay=1.0, session=None, timeout=20, user_agent=VISITOR
+        self, cache_path=None, ttl_days=7, concurrency=2, delay=1.0, session=None, timeout=20, user_agent=IDENTITY
     ):
         self.user_agent = user_agent
         self.cache_path = cache_path
