@@ -290,14 +290,17 @@ def test_comments(tmp_path):
 
 def test_bare_ids_verified(tmp_path):
     repo = tmp_path / "seeds.csv"
-    repo.write_text(f"url,location\n{DOC_URL},page\n")
+    # Another source's link to a bare ID doesn't make the bare ID redundant.
+    repo.write_text(f"url,location\n{DOC_URL},page\nhttps://drive.google.com/file/d/{FILE[:33]}/view,page\n")
     found = tmp_path / "code.txt"
-    found.write_text(f'a = "{FILE[:33]}"; b = "{SHEET[:33]}"')
+    found.write_text(
+        f'a = "{FILE[:33]}"; b = "{SHEET[:33]}"; c = "https://drive.google.com/file/d/{DOC[:33]}/view {DOC[:33]}"'
+    )
     sources = [
         {"type": "csv", "name": "seeds", "path": str(repo)},
         {"type": "files", "name": "code", "path": str(tmp_path), "extensions": [".txt"], "bare_ids": True},
     ]
-    statuses = {DOC: "public", FILE[:33]: "signin", SHEET[:33]: "not_found"}
+    statuses = {DOC: "public", FILE[:33]: "signin", SHEET[:33]: "not_found", DOC[:33]: "public"}
     make_run(tmp_path, FakeGoogle(), statuses, sources=sources, walk={"max_depth": 0}).execute()
 
     bare = [r["item_id"] for r in read(tmp_path, "links.csv") if r["part"] == "bare_id"]

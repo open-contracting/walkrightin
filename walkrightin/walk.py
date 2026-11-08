@@ -216,9 +216,13 @@ class Run:
             if r["target_url"]:
                 r["url_status"] = results[r["target_url"]]["status"]
                 r["http"] = results[r["target_url"]]["http"]
-        linked = {r["item_id"] for r in rows + kept if r["part"] != "bare_id"}
-        # Most strings that look like IDs aren't, so Drive must find them.
-        rows = [r for r in rows if r["part"] != "bare_id" or (r["url_status"] in FOUND and r["item_id"] not in linked)]
+        linked = {(r["source"], r["item_id"]) for r in rows + kept if r["part"] != "bare_id"}
+        # Most strings that look like IDs aren't, so Drive must find them. One its source links by URL is redundant.
+        rows = [
+            r
+            for r in rows
+            if r["part"] != "bare_id" or (r["url_status"] in FOUND and (r["source"], r["item_id"]) not in linked)
+        ]
         self.result.rate_limited += sum(1 for r in rows if r["url_status"] == "rate_limited")
         return kept + rows
 

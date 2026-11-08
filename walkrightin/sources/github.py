@@ -20,17 +20,18 @@ class GitHubSource(Source):
     The tracked files of public GitHub repositories: text files, and PDF, Word, PowerPoint and Excel files.
 
     ``orgs`` lists organizations, whose public repositories are read, including forks and archived ones. ``repos``
-    lists other repositories. Each repository's default branch is read, plus any in ``branches`` ({repo: [branch]}).
-    Each link's location is the file's page on GitHub. Clones are shallow, in the cache directory. Set GITHUB_TOKEN
-    to raise GitHub's rate limit.
+    lists other repositories, and ``exclude`` repositories not to read. Each repository's default branch is read, plus
+    any in ``branches`` ({repo: [branch]}). Each link's location is the file's page on GitHub. Clones are shallow, in
+    the cache directory. Set GITHUB_TOKEN to raise GitHub's rate limit.
     """
 
     type = "github"
 
-    def __init__(self, context, *, orgs=(), repos=(), branches=None, forks=True, archived=True, **kwargs):
+    def __init__(self, context, *, orgs=(), repos=(), exclude=(), branches=None, forks=True, archived=True, **kwargs):
         super().__init__(context, **kwargs)
         self.orgs = list(orgs)
         self.repos = list(repos)
+        self.exclude = set(exclude)
         self.branches = branches or {}
         self.forks = forks
         self.archived = archived
@@ -103,7 +104,7 @@ class GitHubSource(Source):
 
     def links(self):
         repos = [repo for org in self.orgs for repo in self.repositories(org)] + self.repos
-        for repo in dict.fromkeys(repos):
+        for repo in dict.fromkeys(r for r in repos if r not in self.exclude):
             for wanted in self.branches.get(repo, [None]):
                 directory, branch = self.checkout(repo, wanted)
                 n = 0

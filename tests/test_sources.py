@@ -3,6 +3,7 @@ import subprocess
 import pytest
 
 from walkrightin.sources import Context, create
+from walkrightin.sources.github import GitHubSource
 from walkrightin.sources.wordpress import WordPressSource
 
 from .conftest import DOC, FILE
@@ -90,6 +91,22 @@ def test_github_files(context, tmp_path):
         "code.py": [(f"https://drive.google.com/file/d/{FILE[:33]}/view", "", "bare_id")],
     }
     assert source.skipped_for_size == 1
+
+
+def test_github_exclude(context, monkeypatch):
+    checked_out = []
+
+    def checkout(_self, repo, _branch):
+        checked_out.append(repo)
+        return "directory", "main"
+
+    monkeypatch.setattr(GitHubSource, "checkout", checkout)
+    monkeypatch.setattr(GitHubSource, "files", lambda _self, _directory: iter([]))
+
+    source = create(context, {"type": "github", "repos": ["o/a", "o/b"], "exclude": ["o/a"]})
+
+    assert list(source.links()) == []
+    assert checked_out == ["o/b"]
 
 
 def test_wordpress(context, monkeypatch):

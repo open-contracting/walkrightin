@@ -9,7 +9,7 @@ Built-in sources
 ``files``
   The PDF, Word, PowerPoint, Excel and CSV files in a directory, like a website's uploads. Options: ``path``, ``location_prefix``, ``extensions``.
 ``github``
-  The tracked files of public repositories: text files, and PDF, Word, PowerPoint and Excel files. Options: ``orgs``, ``repos``, ``branches`` ({repository: [branch]}, read as well as the default branch), ``forks``, ``archived``. Each link's location is the file's page on GitHub. Set ``GITHUB_TOKEN`` to raise GitHub's rate limit.
+  The tracked files of public repositories: text files, and PDF, Word, PowerPoint and Excel files. Options: ``orgs``, ``repos``, ``exclude``, ``branches`` ({repository: [branch]}, read as well as the default branch), ``forks``, ``archived``. Each link's location is the file's page on GitHub. Set ``GITHUB_TOKEN`` to raise GitHub's rate limit.
 ``csv``
   The links in a CSV file. Options: ``path``, and the columns ``url``, ``location`` and ``text``, and a ``separator`` for cells with several values.
 ``drive``
