@@ -19,12 +19,26 @@ FILE_URL = f"https://drive.google.com/file/d/{FILE}/view"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET}/edit"
 FOLDER_URL = f"https://drive.google.com/drive/folders/{FOLDER_ID}"
 DOCUMENT = "application/vnd.google-apps.document"
+FORM = "application/vnd.google-apps.form"
+FORM_ID = "1FoRmFoRmFoRmFoRmFoRmFoRmFoRmFoRmFoRmFoRmFo"
+PUBLISHED = "2PACX-1vQpUbLiShEdpUbLiShEdpUbLiShEd"
 SPREADSHEET = "application/vnd.google-apps.spreadsheet"
 FOLDER = "application/vnd.google-apps.folder"
 
 
 class FakeGoogle:
-    def __init__(self, *, credentialed=False, files=None, roles=None, contents=None, children=None, comments=None):
+    def __init__(
+        self,
+        *,
+        credentialed=False,
+        files=None,
+        roles=None,
+        contents=None,
+        children=None,
+        comments=None,
+        pages=None,
+        forms=None,
+    ):
         self.credentialed = credentialed
         self.subjects = ["staff@example.org"] if credentialed else []
         self.domain = "example.org"
@@ -33,6 +47,8 @@ class FakeGoogle:
         self.contents = contents or {}
         self.folders = children or {}
         self.comment_lists = comments or {}
+        self.pages = pages or {}
+        self.forms = forms or {}
         self.exported_as = []
         self.read_as = []
         self.inherited = {}
@@ -78,6 +94,15 @@ class FakeGoogle:
 
     def presentation(self, user, presentation_id):
         return None, "no API"
+
+    def form(self, user, form_id):
+        return (self.forms[form_id], "") if form_id in self.forms else (None, "no API")
+
+    def page(self, url):
+        for part, (final, html) in self.pages.items():
+            if part in url:
+                return final, html, ""
+        return url, None, "404 Not Found"
 
 
 def make_run(tmp_path, google, statuses, sources=None, walk=None, check=None, google_config=None, **kwargs):
@@ -393,3 +418,135 @@ def test_max_outside_hops(tmp_path, limit, scanned, reached):
     assert len({r["item_id"] for r in read(tmp_path, "scans.csv")}) == scanned
     assert len(found) == reached
     assert result.skipped_for_outside_hops == (1 if limit is not None else 0)
+
+
+def test_description(tmp_path):
+    google = credentialed()
+    google.files[DOC]["description"] = f"Background: {SHEET_URL}"
+    walk = {"channels": ["export", "metadata"], "max_folder_children": 0}
+    make_run(tmp_path, google, {}, walk=walk, check={"items": "unreadable"}).execute()
+
+    link = next(r for r in read(tmp_path, "links.csv") if r["item_id"] == SHEET)
+    assert (link["channel"], link["part"], link["location"]) == ("metadata", "description", DOC_URL)
+    assert [(r["item_id"], r["channel"]) for r in read(tmp_path, "scans.csv")] == [(DOC, "metadata"), (DOC, "export")]
+
+
+def form_page(*texts):
+    data = json.dumps([None, [texts[0], [[1, text, None, 0] for text in texts[1:]]], "/forms"])
+    return f"<html><script>var FB_PUBLIC_LOAD_DATA_ = {data};</script></html>"
+
+
+@pytest.mark.parametrize(
+    ("form", "visibility"),
+    [({"publishSettings": {"publishState": {"isPublished": True}}}, "hidden"), ({}, "visible")],
+)
+def test_form(tmp_path, form, visibility):
+    form_url = f"https://docs.google.com/forms/d/{FORM_ID}/edit"
+    (tmp_path / "seeds.csv").write_text(f"url,location\n{form_url},page\n")
+    google = FakeGoogle(
+        credentialed=True,
+        files={FORM_ID: {"name": "Form", "mimeType": FORM}},
+        roles={FORM_ID: "reader"},
+        pages={
+            FORM_ID: (
+                f"https://docs.google.com/forms/d/e/{PUBLISHED}/viewform",
+                form_page(
+                    f'Read <a href="{DOC_URL}">the guide</a>',
+                    f"Read {DOC_URL}",
+                    f"https://docs.google.com/forms/d/e/{PUBLISHED}/viewform",
+                ),
+            )
+        },
+        forms={
+            FORM_ID: {
+                "formId": FORM_ID,
+                "responderUri": f"https://docs.google.com/forms/d/e/{PUBLISHED}/viewform",
+                "info": {"title": "Form", "description": "Intro"},
+                "items": [{"itemId": "q1", "title": "Upload", "description": f"Template: {FILE_URL}"}],
+                **form,
+            }
+        },
+    )
+    make_run(tmp_path, google, {}, walk={"channels": ["export", "api"]}, check={"items": "unreadable"}).execute()
+
+    links = [r for r in read(tmp_path, "links.csv") if r["source"] == "walk"]
+    assert [(r["channel"], r["item_id"], r["text"], r["container"], r["visibility"]) for r in links] == [
+        ("export", DOC, "the guide", "", "visible"),
+        ("api", FILE, "", "q1", visibility),
+    ]
+    assert [(r["channel"], r["read_as"]) for r in read(tmp_path, "scans.csv")] == [
+        ("export", "anonymous"),
+        ("api", "staff@example.org"),
+    ]
+
+
+def test_closed_form(tmp_path):
+    (tmp_path / "seeds.csv").write_text(f"url,location\nhttps://docs.google.com/forms/d/{FORM_ID}/edit,page\n")
+    google = FakeGoogle(
+        credentialed=True,
+        files={FORM_ID: {"name": "Form", "mimeType": FORM}},
+        roles={FORM_ID: "reader"},
+        pages={FORM_ID: (f"https://docs.google.com/forms/d/e/{PUBLISHED}/closedform", "<html></html>")},
+    )
+    make_run(tmp_path, google, {}, walk={"channels": ["export"]}, check={"items": "unreadable"}).execute()
+
+    assert [(r["ok"], r["note"]) for r in read(tmp_path, "scans.csv")] == [
+        ("1", "not read: the form doesn't accept responses")
+    ]
+
+
+def test_published(tmp_path):
+    url = f"https://docs.google.com/spreadsheets/d/e/{PUBLISHED}/pub?gid=0&single=true&output=csv"
+    (tmp_path / "seeds.csv").write_text(f"url,location\n{url},page\n")
+    page = f"https://docs.google.com/spreadsheets/d/e/{PUBLISHED}/pubhtml"
+    google = FakeGoogle(
+        credentialed=True,
+        files={DOC: {"name": "Doc", "mimeType": DOCUMENT}},
+        roles={DOC: ""},
+        pages={page: (page, f'<a href="{page}?gid=1">Tab</a> <a href="{DOC_URL}">Doc</a>')},
+    )
+    make_run(tmp_path, google, {PUBLISHED: "public"}, check={"items": "unreadable"}).execute()
+
+    found = items(tmp_path)
+    item = "e:" + PUBLISHED
+    assert (found[item]["status"], found[item]["followed"], found[item]["mime_type"]) == (
+        "public",
+        "1",
+        SPREADSHEET,
+    )
+    assert found[DOC]["linked_from"] == item
+    link = next(r for r in read(tmp_path, "links.csv") if r["source"] == "walk")
+    assert (link["item_id"], link["location"], link["channel"]) == (DOC, page, "export")
+    assert [(r["item_id"], r["read_as"]) for r in read(tmp_path, "scans.csv")] == [(item, "anonymous")]
+
+
+def test_not_read(tmp_path):
+    image = "1ImAgEiMaGeImAgEiMaGeImAgEiMaGe56"
+    google = credentialed()
+    google.files[image] = {"name": "Photo", "mimeType": "image/png"}
+    google.files["1MaPmApMaPmApMaPmApMaPmApMaPmAp78"] = {"name": "Map", "mimeType": "application/vnd.google-apps.map"}
+    google.roles.update(dict.fromkeys([image, "1MaPmApMaPmApMaPmApMaPmApMaPmAp78"], "reader"))
+    google.contents[DOC] = (
+        f"{FILE_URL.replace(FILE, image)} https://drive.google.com/open?id=1MaPmApMaPmApMaPmApMaPmApMaPmAp78"
+    )
+    make_run(tmp_path, google, {}, walk={"max_folder_children": 0}, check={"items": "unreadable"}).execute()
+
+    scans = {r["item_id"]: r for r in read(tmp_path, "scans.csv") if r["channel"] == "none"}
+    assert {i: (r["ok"], r["note"]) for i, r in scans.items()} == {
+        image: ("", "not read: image/png"),
+        "1MaPmApMaPmApMaPmApMaPmApMaPmAp78": ("", "not read: application/vnd.google-apps.map"),
+    }
+
+
+def test_drawing(tmp_path):
+    drawing = "1DrAwInGdRaWiNgDrAwInGdRaWiNg9012"
+    (tmp_path / "seeds.csv").write_text(f"url,location\nhttps://docs.google.com/drawings/d/{drawing}/edit,page\n")
+    google = FakeGoogle(
+        credentialed=True,
+        files={drawing: {"name": "Drawing", "mimeType": "application/vnd.google-apps.drawing"}},
+        roles={drawing: "reader"},
+        contents={drawing: DOC_URL},
+    )
+    make_run(tmp_path, google, {}, walk={"channels": ["export", "api"], "max_depth": 1}).execute()
+
+    assert [(r["channel"], r["links"]) for r in read(tmp_path, "scans.csv")] == [("export", "1")]

@@ -1,5 +1,6 @@
 """Find links to Drive in text and files. Every format's URLs come from one raw pass; parsers add text and place."""
 
+import json
 import re
 import zipfile
 from pathlib import Path
@@ -27,6 +28,11 @@ TRUNCATED = "possibly truncated"
 CHECK = "check by hand"
 GOOGLE = re.compile(r"(?:docs|drive)\.google\.")
 OLE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+
+
+def joined(value):
+    """Return a notebook's text, which is a string or a list of lines."""
+    return "".join(value) if isinstance(value, list) else str(value)
 
 
 def kind_of(path):
@@ -90,6 +96,8 @@ class Extractor:
             return links + self.sheet(path, **fields), ""
         if data.startswith(OLE):
             return self.text(office.legacy(data), **fields), ""
+        if Path(path).suffix.lower() == ".ipynb":
+            return self.notebook(data, **fields), ""
         return self.text(data.decode("utf-8", "replace"), kind_of(path), **fields), ""
 
     def pdf(self, path, data, **fields):
@@ -112,6 +120,25 @@ class Extractor:
                     if url != link.url and link.url.startswith(url) and not other.note:
                         links[url] = Link("", url, other.text, note=f"{TRUNCATED} of {link.url}", **fields)
         return list(links.values()), error
+
+    def notebook(self, data, **fields):
+        """Return a Link for each link in a Jupyter notebook's cells and their text outputs, with the cell number."""
+        try:
+            cells = json.loads(data).get("cells", [])
+        except (ValueError, AttributeError):
+            return self.text(data.decode("utf-8", "replace"), **fields)
+        links = []
+        for n, cell in enumerate(cells, 1):
+            container = f"cell {n}"
+            kind = "markdown" if cell.get("cell_type") == "markdown" else "text"
+            links += self.text(joined(cell.get("source", "")), kind, **{"container": container, **fields})
+            for output in cell.get("outputs", []):
+                texts = {"text/plain": output["text"]} if "text" in output else output.get("data", {})
+                for mime, value in texts.items():
+                    if mime.startswith("text/"):
+                        kind = {"text/html": "html", "text/markdown": "markdown"}.get(mime, "text")
+                        links += self.text(joined(value), kind, **{"part": "output", "container": container, **fields})
+        return links
 
     def leads_to_drive(self, url):
         return bool(DRIVE.match(url)) or bool(self.shortlinks.is_short(url) and self.shortlinks.resolve(url))

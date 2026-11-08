@@ -1,3 +1,4 @@
+import json
 import zipfile
 
 from walkrightin.extract import CHECK, JOINED, TRUNCATED, Extractor
@@ -192,3 +193,45 @@ def test_pdf_tools_missing(extractor, tmp_path, monkeypatch):
 
     assert links == []
     assert error == "qpdf and pdftotext not installed"
+
+
+def test_notebook(extractor, tmp_path):
+    path = tmp_path / "a.ipynb"
+    cells = [
+        {
+            "cell_type": "markdown",
+            "source": ["See [the data](", f"https://docs.google.com/spreadsheets/d/{SHEET}/edit)"],
+        },
+        {
+            "cell_type": "code",
+            "source": f"open('https://drive.google.com/file/d/{FILE}/view')",
+            "outputs": [
+                {"output_type": "stream", "text": ["https://bit.ly/doc\n"]},
+                {
+                    "output_type": "display_data",
+                    "data": {
+                        "image/png": "iVBOR",
+                        "text/html": [f"<a href='https://drive.google.com/open?id={DOC}'>x</a>"],
+                    },
+                },
+            ],
+        },
+    ]
+    path.write_text(json.dumps({"cells": cells}))
+
+    links, error = extractor.file(path)
+
+    assert error == ""
+    assert [(link.url[-20:], link.text, link.part, link.container) for link in links] == [
+        (f"{SHEET[-15:]}/edit", "the data", "body", "cell 1"),
+        (f"{FILE[-15:]}/view", "", "body", "cell 2"),
+        ("https://bit.ly/doc", "", "output", "cell 2"),
+        (f"open?id={DOC}"[-20:], "x", "output", "cell 2"),
+    ]
+
+
+def test_notebook_invalid(extractor, tmp_path):
+    path = tmp_path / "a.ipynb"
+    path.write_text(f"not json https://drive.google.com/file/d/{FILE}/view")
+
+    assert [link.url for link in extractor.file(path)[0]] == [f"https://drive.google.com/file/d/{FILE}/view"]

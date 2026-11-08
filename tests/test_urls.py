@@ -15,10 +15,36 @@ from .conftest import DOC
         # A shared drive's ID is shorter.
         ("https://drive.google.com/drive/folders/0AFwZ8p5bAbCdUk9PVA", None),
         ("https://docs.google.com/document/d/e/2PACX-1vQabcdefghijklmnopqrstuvwxyz/pub", None),
+        (f"https://colab.research.google.com/drive/{DOC}#scrollTo=abc", DOC),
     ],
 )
 def test_drive_id(url, expected):
     assert urls.drive_id(url) == expected
+
+
+def test_colab():
+    url = f"https://colab.research.google.com/drive/{DOC}"
+
+    assert urls.DRIVE.match(url)
+    assert urls.is_drive_link(url)
+    assert not urls.DRIVE.match("https://colab.research.google.com/github/org/repo/blob/main/a.ipynb")
+    assert urls.kind(url) == urls.COLAB
+    # Colab's page opens for anyone, so the file is checked.
+    assert urls.check_url(url) == f"https://drive.google.com/file/d/{DOC}/view"
+
+
+@pytest.mark.parametrize(
+    ("mime_type", "expected"),
+    [
+        ("application/vnd.google-apps.spreadsheet", "https://docs.google.com/spreadsheets/d/e/2PACX-1/pubhtml"),
+        ("application/vnd.google-apps.form", "https://docs.google.com/forms/d/e/2PACX-1/viewform"),
+        ("application/vnd.google-apps.drawing", "https://docs.google.com/drawings/d/e/2PACX-1/pub"),
+        ("", "https://docs.google.com/document/d/e/2PACX-1/pub"),
+    ],
+)
+def test_published_url(mime_type, expected):
+    assert urls.is_published("e:2PACX-1")
+    assert urls.published_url("e:2PACX-1", mime_type) == expected
 
 
 def test_published_id():

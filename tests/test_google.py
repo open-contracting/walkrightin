@@ -1,3 +1,5 @@
+import pytest
+
 from walkrightin import google
 
 DOC = {
@@ -212,7 +214,19 @@ DECK = {
                 }
             },
         }
-    ]
+    ],
+    "layouts": [
+        {
+            "objectId": "l1",
+            "pageElements": [{"objectId": "e4", "shape": {"shapeProperties": {"link": {"url": "LAYOUT"}}}}],
+        }
+    ],
+    "masters": [
+        {
+            "objectId": "m1",
+            "pageElements": [{"objectId": "e5", "image": {"imageProperties": {"link": {"url": "MASTER"}}}}],
+        }
+    ],
 }
 
 
@@ -224,7 +238,46 @@ def test_slide_links():
         ("IMAGE", "image", "s1"),
         ("LINE", "line", "s1"),
         ("NOTE", "speaker_notes", "s1"),
+        ("LAYOUT", "layout", "l1"),
+        ("MASTER", "master", "m1"),
     ]
+
+
+def test_form_page_texts():
+    data = '[null, ["Intro", [[1, "Q1", null, 0, [[2, [["A"]]]]]]], "/forms"]'
+    html = f"<script>var FB_PUBLIC_LOAD_DATA_ = {data};</script>"
+
+    assert google.form_page_texts(html) == ["Intro", "Q1", "A", "/forms"]
+    assert google.form_page_texts("<html></html>") is None
+
+
+def test_form_texts():
+    form = {
+        "formId": "F",
+        "responderUri": "https://docs.google.com/forms/d/e/P/viewform",
+        "info": {"title": "T", "description": "D"},
+        "items": [
+            {
+                "itemId": "q1",
+                "title": "Q",
+                "questionItem": {"question": {"questionId": "x", "choiceQuestion": {"options": [{"value": "O"}]}}},
+            }
+        ],
+    }
+
+    assert google.form_texts(form) == [("", "T\nD"), ("q1", "Q\nO")]
+
+
+@pytest.mark.parametrize(
+    ("form", "expected"),
+    [
+        ({}, True),
+        ({"publishSettings": {"publishState": {"isPublished": True, "isAcceptingResponses": True}}}, True),
+        ({"publishSettings": {"publishState": {"isPublished": True}}}, False),
+    ],
+)
+def test_accepting(form, expected):
+    assert google.accepting(form) is expected
 
 
 def test_users_for():

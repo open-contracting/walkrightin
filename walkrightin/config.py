@@ -8,7 +8,7 @@ from pathlib import Path
 
 from walkrightin.model import IDENTITY
 
-CHANNELS = ("export", "api", "comments")
+CHANNELS = ("export", "api", "comments", "metadata")
 
 
 @dataclass

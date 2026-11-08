@@ -50,9 +50,9 @@ See :class:`walkrightin.walk.Run` for its other options.
 Anonymous and credentials modes
 -------------------------------
 
-Without ``[google]`` credentials, walkrightin reads public files through their public export and download URLs, so it reads exactly what the public can. It follows an item if it opens anonymously. It can't list folders, read comments, or use the Docs, Sheets and Slides APIs.
+Without ``[google]`` credentials, walkrightin reads public files through their public export and download URLs, so it reads exactly what the public can. It follows an item if it opens anonymously. It can't list folders, read comments or descriptions, or use the Docs, Sheets, Slides and Forms APIs.
 
-With a service account that has domain-wide delegation, walkrightin reads each item's metadata as the first of ``subjects`` who can see it, and its link role as its shared drive's reader (in ``drive_readers``), or its owner (if in ``domain``), or that subject. A viewer who isn't an owner or organizer sees no permissions. ``items.csv`` records whether the link is the item's own or inherited, and from which folder. It follows an item if it has an anyone-with-link role, or if its role can't be read and it opens anonymously, or if it's in ``also_follow``. It reads content as the subject who can see the item. An item that no subject can see is read anonymously, if it opens. The service account needs domain-wide delegation for ``scopes``: by default, Drive's read-only scope, which the Docs, Sheets and Slides APIs also accept. If its delegation authorizes only the full Drive scope, set ``scopes`` to that.
+With a service account that has domain-wide delegation, walkrightin reads each item's metadata as the first of ``subjects`` who can see it, and its link role as its shared drive's reader (in ``drive_readers``), or its owner (if in ``domain``), or that subject. A viewer who isn't an owner or organizer sees no permissions. ``items.csv`` records whether the link is the item's own or inherited, and from which folder. It follows an item if it has an anyone-with-link role, or if its role can't be read and it opens anonymously, or if it's in ``also_follow``. It reads content as the subject who can see the item. An item that no subject can see is read anonymously, if it opens. The service account needs domain-wide delegation for ``scopes``: by default, Drive's read-only scope, which the Docs, Sheets, Slides and Forms APIs also accept. If its delegation authorizes only the full Drive scope, set ``scopes`` to that.
 
 Configure
 ---------
@@ -69,7 +69,7 @@ Configure
    max_text_kb = 1000                 # larger text files in repositories are data, not pages
    max_folder_children = 1000         # 0 doesn't walk folders; "all" walks every folder
    max_outside_hops = 1               # outside files to read in a row (default: no limit)
-   channels = ["export", "api", "comments"]
+   channels = ["export", "api", "comments", "metadata"]
    download_csv = false
 
    [check]
@@ -108,29 +108,34 @@ Choices to know about:
 - **Size limits.** Files over ``max_download_mb`` (in Drive) or ``max_text_kb`` (text files in repositories) aren't read. ``run.json`` counts them, by source, and ``scans.csv`` notes each skipped Drive file.
 - **User-Agent.** Every request identifies walkrightin, with a link to this repository. Google answers it as it answers a browser: on 300 Drive URLs, every status was the same. ``user_agent`` overrides it for anonymous requests to Drive.
 - **Outside files.** With ``max_outside_hops``, the walk reads at most that many files in a row that your organization doesn't own, counting from a source or one of your files. Your files are those in a shared drive in ``drive_readers``, or owned in ``domain``. The files an outside file links are still recorded, but outside ones beyond the limit aren't read, so that a partner's register of its own files doesn't lead the walk across Drive. ``items.csv`` records each item's ``outside_hops``, and ``run.json`` counts the files left unread. It needs credentials, to know owners.
-- **Forms** are checked but not read. **Version history** isn't read: viewers can't open it.
+- **Forms** are read through their public page, which is what respondents see, and with credentials through the Forms API. A form that doesn't accept responses shows no one its questions: its page isn't read, and the API's links are ``hidden``.
+- **Published documents.** A published document's URL (``/d/e/...``) has no Drive ID. Unless ``aliases`` maps it to its file, it's an item of its own, whose ``item_id`` is ``e:`` and its published ID. It's checked and read anonymously through its published page. Its owner is unknown, so it counts as an outside file.
+- **Colab notebooks** are downloaded, and their cells and text outputs read. A ``colab.research.google.com/drive/ID`` URL is checked as its Drive file, since Colab's page opens for anyone.
+- **Types not read,** like images, video and My Maps, are noted in ``scans.csv``, with the channel ``none``. Drawings embedded in Docs aren't read: exports and the Docs API have only their image. **Version history** isn't read: viewers can't open it.
 
 Channels
 --------
 
-A Google Doc, Sheet or deck is read through each of ``channels``. Each link records the channel that found it.
+A Google Doc, Sheet, deck, Drawing or form is read through each of ``channels``. Each link records the channel that found it.
 
 ``export``
-  The file's export: a Doc as HTML, a Sheet as XLSX (each tab's links, with the tab's visibility), a deck as PPTX. A raw pass finds every URL in the export.
+  The file's export: a Doc as HTML, a Sheet as XLSX (each tab's links, with the tab's visibility), a deck as PPTX, a Drawing as PDF. A raw pass finds every URL in the export. A form, or a published document, is read through its public page.
 ``api``
-  With credentials: the Docs API (every tab, headers, footers, footnotes, smart chips, and links only in suggestions), the Sheets API (cell links, rich text, HYPERLINK formulas, chips, notes) and the Slides API (text, shapes, lines, images, tables, groups, speaker notes).
+  With credentials: the Docs API (every tab, headers, footers, footnotes, smart chips, and links only in suggestions), the Sheets API (cell links, rich text, HYPERLINK formulas, chips, notes) the Slides API (text, shapes, lines, images, tables, groups, speaker notes, layouts and masters) and the Forms API (title, description, questions and options).
 ``comments``
   With credentials: the links in comments and replies, open and resolved. ``comments.csv`` has each comment, and whether its quoted text is still in a Doc.
+``metadata``
+  With credentials: the links in the description of a followed item, of any type.
 
 Outputs
 -------
 
 ``links.csv``
-  Each link to Drive: its ``source`` (or ``walk`` for a link in a Drive file), ``location``, ``part`` (body, header, footnote, chip, suggestion, cell, note, comment, resolved_comment, speaker_notes, script, html_comment, attribute:NAME, folder_child, bare_id, ...), ``container`` (a tab, cell, slide or comment), ``visibility`` (visible, hidden, very_hidden, source_only), ``channel``, ``url`` as found, ``text``, ``note``, the anonymous check of a source's URL as found (``url_status``, ``http``), the Drive URL it leads to (``target_url``, and ``short_url`` if through a short link), ``item_id``, ``resource_key`` and ``depth``.
+  Each link to Drive: its ``source`` (or ``walk`` for a link in a Drive file), ``location``, ``part`` (body, header, footnote, chip, suggestion, cell, note, comment, resolved_comment, speaker_notes, layout, master, description, output, script, html_comment, attribute:NAME, folder_child, bare_id, ...), ``container`` (a tab, cell, slide or comment), ``visibility`` (visible, hidden, very_hidden, source_only), ``channel``, ``url`` as found, ``text``, ``note``, the anonymous check of a source's URL as found (``url_status``, ``http``), the Drive URL it leads to (``target_url``, and ``short_url`` if through a short link), ``item_id``, ``resource_key`` and ``depth``.
 ``items.csv``
-  Each item reached: its anonymous check (``status``, ``http``, ``checked_at``), ``depth``, ``linked_from``, whether it was ``followed``, and with credentials, its ``link_role`` ("" for none, "?" if unreadable), whether that link is inherited rather than its own (``link_inherited``) and from which folder, if Drive says (``link_from``), who could read it (``read_as``) and its metadata.
+  Each item reached, by its Drive ID (or ``e:`` and a published document's ID): its anonymous check (``status``, ``http``, ``checked_at``), ``depth``, ``linked_from``, whether it was ``followed``, and with credentials, its ``link_role`` ("" for none, "?" if unreadable), whether that link is inherited rather than its own (``link_inherited``) and from which folder, if Drive says (``link_from``), who could read it (``read_as``) and its metadata.
 ``scans.csv``
-  Each read of an item, by channel: who read it, whether it succeeded, its error, its number of links, and any note.
+  Each read of an item, by channel: who read it, whether it succeeded, its error, its number of links, and any note. An item of a type that isn't read has a row with the channel ``none``.
 ``comments.csv``
   Each comment and reply, with credentials.
 ``run.json``

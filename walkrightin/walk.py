@@ -11,7 +11,7 @@ from pathlib import Path
 import requests
 
 from walkrightin import google as g
-from walkrightin.check import Checker, now
+from walkrightin.check import Checker, now, signin
 from walkrightin.extract import Extractor
 from walkrightin.model import FOUND, IDENTITY, Link, opens
 from walkrightin.output import (
@@ -29,12 +29,16 @@ from walkrightin.sources import Context, create
 from walkrightin.urls import (
     DRIVE,
     FOLDER,
+    FORM,
+    PUBLISHED_PREFIX,
     WRAPPERS,
     drive_id,
     file_url,
+    is_published,
     item_check_url,
     kind,
     published_id,
+    published_url,
     resource_key,
 )
 
@@ -47,6 +51,8 @@ EDIT_PATHS = {g.DOCUMENT: "document", g.SPREADSHEET: "spreadsheets", g.PRESENTAT
 
 def location_of(item_id, mime_type):
     """Return the URL to name a Drive file by, as the location of the links in it."""
+    if is_published(item_id):
+        return published_url(item_id, mime_type)
     if mime_type in EDIT_PATHS:
         return f"https://docs.google.com/{EDIT_PATHS[mime_type]}/d/{item_id}/edit"
     if mime_type == FOLDER:
@@ -164,8 +170,12 @@ class Run:
         return None, ""
 
     def item_id(self, url):
-        """Return the Drive ID that a URL links to, including a published file's through the aliases, or ""."""
-        return drive_id(url) or self.aliases.get(published_id(url) or "", "")
+        """Return the Drive ID that a URL links to, or a published file's through the aliases or as "e:" and its ID."""
+        if file_id := drive_id(url):
+            return file_id
+        if pid := published_id(url):
+            return self.aliases.get(pid) or PUBLISHED_PREFIX + pid
+        return ""
 
     def resolve(self, links):
         """Resolve short links in parallel, so that target() finds them cached."""
@@ -249,6 +259,11 @@ class Run:
             "error": "",
             "resource_key": key,
         }
+        if is_published(item_id):
+            # A published file has no Drive ID to read its metadata or permissions by. Its page is public or not.
+            result = self.checker.check(published_url(item_id, m["mime_type"]))
+            m.update(status=result["status"], http=result["http"], checked_at=result["checked_at"])
+            return m
         if self.google.credentialed:
             user, info = self.google.metadata(item_id, key)
             if info:
@@ -263,6 +278,7 @@ class Run:
                     read_as=user,
                     version=info.get("md5Checksum") or info.get("headRevisionId") or info.get("modifiedTime", ""),
                     resource_key=info.get("resourceKey") or key,
+                    description=info.get("description", ""),
                 )
                 permission_reader = self.reader(m["drive_id"], owner) or user
                 m["link_role"], inherited, m["link_from"] = self.google.link(permission_reader, item_id)
@@ -308,14 +324,14 @@ class Run:
         key = m.get("resource_key") or ""
         links, scans, comments = [], [], []
 
-        def add(found, channel, error="", note="", read_as=None):
+        def add(found, channel, error="", note="", read_as=None, *, read=True):
             found = [dataclasses.replace(link, location=location, channel=channel) for link in found]
             scans.append(
                 {
                     "item_id": item_id,
                     "channel": channel,
                     "read_as": read_as or user or ANONYMOUS,
-                    "ok": "" if error else "1",
+                    "ok": "1" if read and not error else "",
                     "error": error,
                     "links": len(found),
                     "note": note,
@@ -323,31 +339,87 @@ class Run:
             )
             links.extend(found)
 
-        if mime in g.EXPORTS:
+        if user and m.get("description") and "metadata" in self.channels:
+            add(self.extractor.text(m["description"], part="description"), "metadata")
+
+        if is_published(item_id):
+            if "export" in self.channels:
+                found, error, note = self.page_links(item_id, location, mime)
+                add(found, "export", error, note, ANONYMOUS)
+        elif mime in g.EXPORTS:
             if "export" in self.channels:
                 with self.google.export(user, item_id, mime, key) as (path, error):
                     found, read_error = self.extractor.file(path) if path else ([], "")
                 add(found, "export", error or read_error)
-            if user and "api" in self.channels:
+            if user and "api" in self.channels and mime in g.API_TYPES:
                 found, error = self.api_links(user, item_id, mime)
                 add(found, "api", error)
             if user and "comments" in self.channels:
                 found, comment_rows, error = self.comment_links(user, item_id, mime, key)
                 comments += comment_rows
                 add(found, "comments", error)
+        elif mime == FORM:
+            # A form's public page is what respondents see, if it accepts responses.
+            if "export" in self.channels:
+                found, error, note = self.page_links(item_id, item_check_url(item_id, mime), mime)
+                add(found, "export", error, note, ANONYMOUS)
+            if user and "api" in self.channels:
+                found, error = self.form_links(user, item_id)
+                add(found, "api", error)
         elif mime == FOLDER:
             if self.folder_limit == 0:
-                return [], [], []
-            if not user:
+                pass
+            elif not user:
                 add([], "listing", "not walked: a folder can be listed only with credentials")
             else:
                 found, error, note = self.folder_links(user, item_id)
                 add(found, "listing", error, note)
-        elif not g.is_google(mime):
+        elif mime and g.is_google(mime):
+            add([], "none", note=f"not read: {mime}", read=False)
+        else:
             found, error, note = self.download_links(user, item_id, m, key)
-            if found is not None:
+            if found is None:
+                add([], "none", note=note, read=False)
+            else:
                 add(found, "download", error, note)
         return [r for link in links if (r := self.row(WALK, link, depth))], scans, comments
+
+    def page_links(self, item_id, url, mime):
+        """Return (Links, error, note) from a form's or a published file's public page."""
+        final, html, error = self.google.page(url)
+        if html is None:
+            return [], error, ""
+        if signin(final):
+            return [], "sign-in", ""
+        if "/closedform" in final:
+            return [], "", "not read: the form doesn't accept responses"
+        if mime == FORM:
+            texts = g.form_page_texts(html)
+            if texts is None:
+                return [], "no form data in the page", ""
+            found = self.extractor.text("\n".join(texts), "html")
+        else:
+            found = self.extractor.text(html, "html")
+        # A page links to itself, and a form's page has each text with and without its HTML.
+        own = {item_id, PUBLISHED_PREFIX + (published_id(final) or "")}
+        best = {}
+        for link in found:
+            if self.item_id(link.url) in own:
+                continue
+            if link.url not in best or (link.text and not best[link.url].text):
+                best[link.url] = link
+        return list(best.values()), "", ""
+
+    def form_links(self, user, item_id):
+        """Return (Links, error) from the Forms API. A form that doesn't accept responses shows no one its links."""
+        form, error = self.google.form(user, item_id)
+        if form is None:
+            return [], error
+        visibility = "visible" if g.accepting(form) else "hidden"
+        found = []
+        for container, text in g.form_texts(form):
+            found += self.extractor.text(text, part="body", container=container, visibility=visibility)
+        return [link for link in found if self.item_id(link.url) != item_id], ""
 
     def api_links(self, user, item_id, mime):
         """Return (Links, error) from the Docs, Sheets or Slides API."""
@@ -433,14 +505,14 @@ class Run:
         return found, "", ""
 
     def download_links(self, user, item_id, m, key):
-        """Return (Links or None if not a type to read, error, note) for a non-Google file."""
+        """Return (Links, error, note) for a non-Google file. If it isn't a type to read, Links is None."""
         mime, name = m["mime_type"], m.get("name", "")
         # A CSV can be uploaded with an Excel MIME type.
         csv_file = name.lower().endswith(".csv") or mime == "text/csv"
         if csv_file and not self.config.walk.download_csv:
-            return None, "", ""
+            return None, "", "not read: a CSV file (see download_csv)"
         if user and not csv_file and mime not in g.DOWNLOADS:
-            return None, "", ""
+            return None, "", f"not read: {mime or 'unknown type'}"
         if m.get("size") and int(m["size"]) > self.max_download:
             return [], "", f"skipped: larger than {self.config.walk.max_download_mb} MB"
         cached = self.downloads_cache.get(item_id)
@@ -452,7 +524,7 @@ class Run:
                 note = "skipped: larger than" if error.startswith("larger than") else ""
                 return [], error, note and f"{note} {self.config.walk.max_download_mb} MB"
             if not user and not self.sniff(path):
-                return None, "", ""
+                return None, "", "not read: not a PDF, Office file or notebook"
             found, read_error = self.extractor.file(path)
         if m.get("version"):
             self.downloads_cache[item_id] = {
@@ -463,10 +535,10 @@ class Run:
         return found, read_error, ""
 
     def sniff(self, path):
-        """Return whether an anonymous download is a type to read: a PDF, a zip (Office) or an old Office file."""
+        """Return whether an anonymous download is a type to read: a PDF, Office file or notebook."""
         with path.open("rb") as f:
             head = f.read(8)
-        if head.startswith((b"%PDF-", b"PK\x03\x04", b"\xd0\xcf\x11\xe0")):
+        if head.startswith((b"%PDF-", b"PK\x03\x04", b"\xd0\xcf\x11\xe0")) or path.suffix == ".ipynb":
             return True
         return bool(self.config.walk.download_csv and path.suffix == ".csv")
 

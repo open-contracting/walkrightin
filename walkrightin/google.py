@@ -5,6 +5,7 @@ Also the readers of the Docs, Sheets and Slides APIs' links, which return each l
 caller can write the links back.
 """
 
+import json
 import re
 import shutil
 import tempfile
@@ -15,7 +16,7 @@ from pathlib import Path
 import requests
 
 from walkrightin.model import IDENTITY
-from walkrightin.urls import FOLDER
+from walkrightin.urls import COLAB, DRAWING, FOLDER
 
 DRIVE_API = "https://www.googleapis.com/drive/v3"
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
@@ -35,7 +36,10 @@ EXPORTS = {
         "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         "https://docs.google.com/presentation/d/{id}/export/pptx",
     ),
+    DRAWING: ("pdf", "application/pdf", "https://docs.google.com/drawings/d/{id}/export/pdf"),
 }
+# The types with an API that returns their links.
+API_TYPES = (DOCUMENT, SPREADSHEET, PRESENTATION)
 TEXT_EXPORT = "https://docs.google.com/document/d/{id}/export?format=txt"
 # The types to download. CSVs are left out: they hold data, whose URLs aren't meant as links.
 DOWNLOADS = {
@@ -46,9 +50,15 @@ DOWNLOADS = {
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
     "application/vnd.ms-excel": ".xls",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    COLAB: ".ipynb",
 }
+# The data in a form's public page, with its title, description, questions and options.
+FORM_DATA = re.compile(r"FB_PUBLIC_LOAD_DATA_ = (.*?);\s*</script>", re.DOTALL)
+# The fields of a form, from the Forms API, that hold no text that respondents see.
+FORM_SKIP = {"formId", "itemId", "questionId", "revisionId", "responderUri", "linkedSheetId", "contentUri"}
 METADATA_FIELDS = (
-    "id,name,mimeType,driveId,owners(emailAddress),parents,modifiedTime,size,md5Checksum,headRevisionId,resourceKey"
+    "id,name,mimeType,driveId,owners(emailAddress),parents,modifiedTime,size,md5Checksum,headRevisionId,resourceKey,"
+    "description"
 )
 COMMENT_FIELDS = (
     "nextPageToken,comments(id,author(displayName,emailAddress,me),resolved,deleted,createdTime,content,htmlContent,"
@@ -198,7 +208,9 @@ class Google:
                 yield None, error or f"no {ext} export"
                 return
         else:
-            url = public.format(id=file_id) + (f"&resourcekey={key}" if key and "?" in public else "")
+            url = public.format(id=file_id)
+            if key:
+                url += f"{'&' if '?' in url else '?'}resourcekey={key}"
         with self._fetch(user, url, ext, file_id, key=key) as result:
             yield result
 
@@ -287,6 +299,19 @@ class Google:
     def presentation(self, user, presentation_id):
         return self.get(user, f"https://slides.googleapis.com/v1/presentations/{presentation_id}")
 
+    def form(self, user, form_id):
+        return self.get(user, f"https://forms.googleapis.com/v1/forms/{form_id}")
+
+    def page(self, url):
+        """Return (the final URL, the HTML or None, error text) of a public page, read anonymously."""
+        try:
+            response = self.session().get(url, timeout=self.timeout)
+        except requests.RequestException as e:
+            return url, None, str(e)[:200]
+        if not response.ok:
+            return response.url, None, f"{response.status_code} {response.reason}"
+        return response.url, response.text, ""
+
 
 def save(response, path, max_bytes):
     """Write a streamed response to the path. Return the error text, or the empty string."""
@@ -306,6 +331,43 @@ def save(response, path, max_bytes):
 def disposition_ext(value):
     m = re.search(r"""filename\*?=(?:UTF-8'')?"?([^";]+)"?""", value)
     return Path(m.group(1)).suffix.lstrip(".").lower() if m else ""
+
+
+def strings(value, skip=()):
+    """Yield the strings in JSON data, except under the keys in ``skip``."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, list):
+        for v in value:
+            yield from strings(v, skip)
+    elif isinstance(value, dict):
+        for k, v in value.items():
+            if k not in skip:
+                yield from strings(v, skip)
+
+
+def form_page_texts(html):
+    """Return the texts in a form's public page (title, description, questions, options), or None if it has none."""
+    m = FORM_DATA.search(html)
+    return list(strings(json.loads(m.group(1)))) if m else None
+
+
+def form_texts(form):
+    """Return a form's texts, from the Forms API, as (item ID or "" for the form's own, text)."""
+    return [
+        (container, "\n".join(strings(value, FORM_SKIP)))
+        for container, value in [
+            ("", form.get("info", {})),
+            *((i.get("itemId", ""), i) for i in form.get("items", [])),
+        ]
+    ]
+
+
+def accepting(form):
+    """Return whether a form, from the Forms API, accepts responses. The API omits false values."""
+    if "publishSettings" not in form:  # a form from before publish settings
+        return True
+    return form["publishSettings"].get("publishState", {}).get("isAcceptingResponses", False)
 
 
 def is_google(mime_type):
@@ -419,7 +481,8 @@ def slide_links(deck, *, detail=False):
     """
     Return the deck's links as (place, URL): text runs', and shapes', lines' and images', on slides and notes.
 
-    With ``detail``, return (place, URL, part, slide ID): part is text, shape, line, image or speaker_notes.
+    With ``detail``, return (place, URL, part, page ID): part is text, shape, line, image, speaker_notes, or layout or
+    master for the links on the slides' layouts and masters.
     """
     found = []
 
@@ -448,5 +511,8 @@ def slide_links(deck, *, detail=False):
         walk(page.get("pageElements"), None, slide)
         walk(page.get("slideProperties", {}).get("notesPage", {}).get("pageElements"), "speaker_notes", slide)
     if detail:
+        for part, key in (("layout", "layouts"), ("master", "masters")):
+            for page in deck.get(key, []):
+                walk(page.get("pageElements"), part, page.get("objectId", ""))
         return found
     return [(where, url) for where, url, *_ in found]
