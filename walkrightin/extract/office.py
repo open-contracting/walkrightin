@@ -22,6 +22,45 @@ def contents(path):
     return Path(path).read_text(errors="ignore")
 
 
+def hyperlink_texts(path):
+    """
+    Return {URL: [text]} for a Word or PowerPoint file's hyperlinks, like ``link_texts``.
+
+    A shape's or picture's hyperlink has the text None, as it shows something without text.
+    """
+    texts = {}
+    with zipfile.ZipFile(path) as z:
+        names = set(z.namelist())
+        for name in names:
+            folder, _, base = name.rpartition("/")
+            rels_name = f"{folder}/_rels/{base}.rels"
+            if not name.endswith(".xml") or rels_name not in names:
+                continue
+            rels_xml = z.read(rels_name).decode("utf-8", "ignore")
+            rels = {
+                attr(rel, "Id"): html.unescape(attr(rel, "Target") or "")
+                for rel in re.findall(r"<Relationship\b[^>]*>", rels_xml)
+            }
+            xml = z.read(name).decode("utf-8", "ignore")
+            anchors = [
+                (attr(attrs, "r:id"), body)
+                for attrs, body in re.findall(r"<w:hyperlink\b([^>]*)>(.*?)</w:hyperlink>", xml, re.DOTALL)
+            ]
+            anchors += [
+                (m.group(1), run)
+                for run in re.findall(r"<a:r\b[^>]*>(.*?)</a:r>", xml, re.DOTALL)
+                if (m := re.search(r'<a:hlinkClick\b[^>]*?r:id="([^"]*)"', run))
+            ]
+            for rid, body in anchors:
+                if url := rels.get(rid):
+                    label = "".join(re.findall(r"<[wa]:t\b[^>]*>(.*?)</[wa]:t>", body, re.DOTALL))
+                    texts.setdefault(url, []).append(re.sub(r"\s+", " ", html.unescape(label)).strip())
+            for rid in re.findall(r'<p:cNvPr\b[^>]*>\s*<a:hlinkClick\b[^>]*?r:id="([^"]*)"', xml):
+                if url := rels.get(rid):
+                    texts.setdefault(url, []).append(None)
+    return texts
+
+
 def legacy(data):
     """Return the text of an Office 97-2003 file: single-byte characters, or UTF-16 at either alignment."""
     return " ".join(
@@ -88,9 +127,11 @@ def sheet_cells(path):
             v = re.search(r"<v>(.*?)</v>", body, re.DOTALL)
             if 't="s"' in attrs and v:
                 cells[ref] = shared[int(v.group(1))]
+            elif inline := re.search(r"<t[^>]*>(.*?)</t>", body, re.DOTALL):
+                cells[ref] = html.unescape(inline.group(1))
             else:
-                inline = re.search(r"<t[^>]*>(.*?)</t>", body, re.DOTALL)
-                cells[ref] = html.unescape(inline.group(1)) if inline else ""
+                # A formula's cached value, like a HYPERLINK's displayed URL.
+                cells[ref] = html.unescape(v.group(1)) if v else ""
             if f := re.search(r"HYPERLINK\(&quot;(.*?)&quot;(?:,\s*&quot;(.*?)&quot;)?", body):
                 yield (
                     name,

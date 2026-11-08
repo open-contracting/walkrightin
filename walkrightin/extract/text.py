@@ -92,13 +92,26 @@ def normalize_href(href, shortlinks, wrappers=WRAPPERS):
     return normalize_short(url) if shortlinks.is_short(url) else url
 
 
+def html_label(markup):
+    """Return an anchor's text: "" if blank, or None if it has no text but shows something, like an image."""
+    return text_of(markup) or (None if re.search(r"<(?:img|svg)\b", markup, re.IGNORECASE) else "")
+
+
+def blank(labels):
+    """Return whether a URL's anchors all have blank text, so that no reader sees the link."""
+    return bool(labels) and all(label == "" for label in labels)
+
+
+def joined_labels(labels):
+    return " | ".join(dict.fromkeys(label for label in labels if label))
+
+
 def link_texts(text, shortlinks, patterns=(MD_LINK, HTML_LINK, RST_LINK), wrappers=WRAPPERS):
-    """Return {URL: [text]} for the Markdown, HTML and reStructuredText links in the text."""
+    """Return {URL: [text]} for the Markdown, HTML and reStructuredText links in the text. See ``html_label``."""
     texts = {}
     for pattern in patterns:
         for m in pattern.finditer(text):
             label, href = (m.group(2), m.group(1)) if pattern is HTML_LINK else (m.group(1), m.group(2))
-            label = text_of(label) if pattern is HTML_LINK else label.strip()
-            if label:
-                texts.setdefault(normalize_href(href, shortlinks, wrappers), []).append(label)
+            label = html_label(label) if pattern is HTML_LINK else label.strip()
+            texts.setdefault(normalize_href(href, shortlinks, wrappers), []).append(label)
     return texts

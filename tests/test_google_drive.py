@@ -1,6 +1,13 @@
 import pytest
 
-from walkrightin.platforms.google_drive import client, readers
+from walkrightin.extract import Extractor
+from walkrightin.platforms import Context
+from walkrightin.platforms.google_drive import GoogleDrive, Options, client, readers
+from walkrightin.platforms.google_drive.urls import DOCUMENT, PRESENTATION, SPREADSHEET
+
+from .conftest import DOC as DOC_ID
+from .conftest import FILE, FakeShortLinks
+from .conftest import SHEET as SHEET_ID
 
 DOC = {
     "tabs": [
@@ -110,7 +117,7 @@ def test_doc_links_plain():
 
 
 def test_doc_links_detail():
-    assert [(url, part, title) for _, url, part, title in readers.doc_links(DOC, detail=True)] == [
+    assert [(url, part, title) for _, url, part, title, _ in readers.doc_links(DOC, detail=True)] == [
         ("A", "body", "Main"),
         ("CHIP", "chip", "Main"),
         ("S", "suggestion", "Main"),
@@ -169,7 +176,13 @@ def test_sheet_links_detail():
         ("CELL", "cell", "Data!AA2", "hidden", ""),
         ("RUN", "cell", "Data!AA2", "hidden", ""),
         (None, "note", "Data!AA2", "hidden", "see NOTE"),
-        ("https://docs.google.com/document/d/x/edit", "cell", "Data!AB2", "hidden", ""),
+        (
+            "https://docs.google.com/document/d/x/edit",
+            "cell",
+            "Data!AB2",
+            "hidden",
+            '=HYPERLINK("https://docs.google.com/document/d/x/edit","t")',
+        ),
         ("CHIP", "chip", "Data!AB2", "hidden", ""),
         (None, "cell", "Data!AC2", "hidden", "typed URL"),
     ]
@@ -232,7 +245,7 @@ DECK = {
 
 def test_slide_links():
     assert [url for _, url in readers.slide_links(DECK)] == ["SHAPE", "TEXT", "IMAGE", "LINE", "NOTE"]
-    assert [(url, part, slide) for _, url, part, slide in readers.slide_links(DECK, detail=True)] == [
+    assert [(url, part, slide) for _, url, part, slide, _ in readers.slide_links(DECK, detail=True)] == [
         ("SHAPE", "shape", "s1"),
         ("TEXT", "text", "s1"),
         ("IMAGE", "image", "s1"),
@@ -365,3 +378,103 @@ def test_get_rate_limited(monkeypatch, responses, expected, sleeps):
 
     assert client.Client().get("user", "https://www.googleapis.com/drive/v3/files/1") == expected
     assert len(slept) == sleeps
+
+
+def test_api_links_blank():
+
+    doc_url = f"https://docs.google.com/document/d/{DOC_ID}/edit"
+    file_url = f"https://drive.google.com/file/d/{FILE}/view"
+    sheet_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit"
+
+    def run(content, url):
+        return {"textRun": {"content": content, "textStyle": {"link": {"url": url}}}}
+
+    doc = {
+        "tabs": [
+            {
+                "tabProperties": {"tabId": "t.0", "title": "Main"},
+                "documentTab": {
+                    "body": {
+                        "content": [
+                            {
+                                "paragraph": {
+                                    "elements": [
+                                        run(" ", doc_url),
+                                        run("The ", file_url),
+                                        run(" ", file_url),
+                                        {"richLink": {"richLinkProperties": {"uri": sheet_url}}},
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                },
+            }
+        ]
+    }
+    sheet = {
+        "sheets": [
+            {
+                "properties": {"sheetId": 0, "title": "Data"},
+                "data": [
+                    {
+                        "rowData": [
+                            {
+                                "values": [
+                                    {
+                                        "userEnteredValue": {"stringValue": " "},
+                                        "userEnteredFormat": {"textFormat": {"link": {"uri": doc_url}}},
+                                    },
+                                    {
+                                        "userEnteredValue": {"stringValue": "See  "},
+                                        "textFormatRuns": [
+                                            {"startIndex": 0, "format": {}},
+                                            {"startIndex": 4, "format": {"link": {"uri": file_url}}},
+                                        ],
+                                    },
+                                ]
+                            }
+                        ]
+                    }
+                ],
+            }
+        ]
+    }
+    deck = {
+        "slides": [
+            {
+                "objectId": "s1",
+                "pageElements": [
+                    {
+                        "objectId": "b1",
+                        "shape": {
+                            "shapeProperties": {"link": {"url": sheet_url}},
+                            "text": {
+                                "textElements": [
+                                    {"endIndex": 1, "textRun": {"content": " ", "style": {"link": {"url": doc_url}}}},
+                                    {
+                                        "endIndex": 2,
+                                        "textRun": {"content": " ", "style": {"link": {"url": sheet_url}}},
+                                    },
+                                ]
+                            },
+                        },
+                    }
+                ],
+            }
+        ]
+    }
+    gd = GoogleDrive(Options(), Context(extractor=Extractor(FakeShortLinks())))
+    gd.client.document = lambda _user, _id: (doc, "")
+    gd.client.spreadsheet = lambda _user, _id: (sheet, "")
+    gd.client.presentation = lambda _user, _id: (deck, "")
+
+    def seen(mime):
+        links, error = gd.api_links("user", "id", mime)
+        assert error == ""
+        return {link.url: link.visibility for link in links}
+
+    # A link is blank only if none of its runs has text, and a chip or a shape shows it.
+    assert seen(DOCUMENT) == {doc_url: "blank", file_url: "visible", sheet_url: "visible"}
+    assert seen(SPREADSHEET) == {doc_url: "blank", file_url: "blank"}
+    assert seen(PRESENTATION) == {doc_url: "blank", sheet_url: "visible"}

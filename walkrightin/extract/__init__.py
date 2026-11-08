@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from walkrightin.extract import markup, office, pdf
-from walkrightin.extract.text import find, link_texts
+from walkrightin.extract.text import blank, find, joined_labels, link_texts, normalize_href
 from walkrightin.model import Link
 from walkrightin.urls import WRAPPERS, clean
 
@@ -62,23 +62,31 @@ class Extractor:
     def keep(self, url):
         return self.platforms.identifies(url) if self.platforms.match(url) else True
 
-    def text(self, content, kind="text", **fields):
-        """Return the Links in text of a kind: text, markdown, html or rst. ``fields`` are set on each Link."""
+    def text(self, content, kind="text", texts=None, **fields):
+        """
+        Return the Links in text of a kind: text, markdown, html or rst. ``fields`` are set on each Link.
+
+        ``texts`` adds {URL: [text]} to the links' texts in the markup, like an Office file's hyperlinks'.
+        """
         content = clean(content)
         found = [f for f in find(content, self.shortlinks, self.wrappers) if self.keep(f.url)]
         if kind == "html":
-            texts = markup.html_texts(content, self.shortlinks)
+            labels = markup.html_texts(content, self.shortlinks)
         elif kind == "markdown":
-            texts = markup.markdown_texts(content, self.shortlinks)
+            labels = markup.markdown_texts(content, self.shortlinks)
         else:
-            texts = link_texts(content, self.shortlinks, wrappers=self.wrappers)
+            labels = link_texts(content, self.shortlinks, wrappers=self.wrappers)
+        for url, more in (texts or {}).items():
+            labels.setdefault(normalize_href(url, self.shortlinks, self.wrappers), []).extend(more)
         spans = markup.html_parts(content) if kind in ("html", "markdown") else []
         links = []
         for f in found:
             part, visibility = markup.place(f, spans) if spans else ("body", "visible")
             # An href is percent-decoded, so a URL found with "%3D" matches an href with "=".
-            text = " | ".join(dict.fromkeys(texts.get(f.url, []) + texts.get(unquote(f.url), [])))
-            links.append(Link("", f.url, text, **{"part": part, "visibility": visibility, **fields}))
+            anchors = labels.get(f.url, []) + labels.get(unquote(f.url), [])
+            if visibility == "visible" and blank(anchors):
+                visibility = "blank"
+            links.append(Link("", f.url, joined_labels(anchors), **{"part": part, "visibility": visibility, **fields}))
         if self.bare_ids:
             linked = {self.platforms.key(f.url)[0] for f in found}
             links += [
@@ -94,9 +102,12 @@ class Extractor:
         if data.startswith(b"%PDF-"):
             return self.pdf(path, data, **fields)
         if zipfile.is_zipfile(path):
-            links = self.text(
-                office.contents(path), "html" if Path(path).suffix.lower() in {".html", ".htm"} else "text", **fields
-            )
+            try:
+                texts = office.hyperlink_texts(path)
+            except (KeyError, ValueError, zipfile.BadZipFile):
+                texts = {}
+            kind = "html" if Path(path).suffix.lower() in {".html", ".htm"} else "text"
+            links = self.text(office.contents(path), kind, texts, **fields)
             return links + self.sheet(path, **fields), ""
         if data.startswith(OLE):
             return self.text(office.legacy(data), **fields), ""
@@ -156,6 +167,8 @@ class Extractor:
             return links
         for tab, visibility, ref, url, text in cells:
             urls = [url] if url and self.is_link(url) else [f.url for f in find(clean(text), self.shortlinks)]
+            # A hyperlink on a cell without visible text is a link that no reader sees.
+            seen = "blank" if url and visibility == "visible" and not text.strip() else visibility
             links.extend(
                 Link(
                     "",
@@ -163,7 +176,7 @@ class Extractor:
                     text if url else "",
                     part="cell",
                     container=f"{tab}!{ref}",
-                    visibility=visibility,
+                    visibility=seen,
                     **fields,
                 )
                 for u in dict.fromkeys(urls)

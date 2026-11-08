@@ -60,8 +60,9 @@ def doc_links(doc, *, detail=False):
     """
     Return the Doc's links as (range, URL): its text runs', and its smart chips' with a range of None.
 
-    With ``detail``, return (range, URL, part, tab title): part is body, header, footer, footnote, chip or suggestion.
-    A suggested link is one in a suggested insertion, or in a suggested change to a run's style.
+    With ``detail``, return (range, URL, part, tab title, text): part is body, header, footer, footnote, chip or
+    suggestion, and text is the run's, or None for a chip. A suggested link is one in a suggested insertion, or in a
+    suggested change to a run's style.
     """
     found, plain = [], []
 
@@ -73,15 +74,16 @@ def doc_links(doc, *, detail=False):
                         walk(cell.get("content"), where, part, title)
             for e in element.get("paragraph", {}).get("elements", []):
                 run = e.get("textRun", {})
+                text = run.get("content", "")
                 span = {**where, "startIndex": e.get("startIndex", 0), "endIndex": e.get("endIndex")}
                 if url := run.get("textStyle", {}).get("link", {}).get("url"):
-                    found.append((span, url, "suggestion" if run.get("suggestedInsertionIds") else part, title))
+                    found.append((span, url, "suggestion" if run.get("suggestedInsertionIds") else part, title, text))
                     plain.append((span, url))
                 elif uri := e.get("richLink", {}).get("richLinkProperties", {}).get("uri"):
-                    found.append((None, uri, "chip", title))
+                    found.append((None, uri, "chip", title, None))
                     plain.append((None, uri))
                 found.extend(
-                    (span, url, "suggestion", title)
+                    (span, url, "suggestion", title, text)
                     for change in run.get("suggestedTextStyleChanges", {}).values()
                     if (url := change.get("textStyle", {}).get("link", {}).get("url"))
                 )
@@ -130,14 +132,22 @@ def sheet_links(sheet, *, detail=False):
                 for c, value in enumerate(row.get("values", []), data.get("startColumn", 0)):
                     place = f"{title}!{column(c)}{r + 1}"
                     runs = value.get("textFormatRuns", [])
-                    urls = [value.get("userEnteredFormat", {}).get("textFormat", {}).get("link", {}).get("uri")]
-                    urls += [run.get("format", {}).get("link", {}).get("uri") for run in runs]
-                    urls += DRIVE.findall(value.get("userEnteredValue", {}).get("formulaValue", ""))
+                    string = value.get("userEnteredValue", {}).get("stringValue", "")
+                    formula = value.get("userEnteredValue", {}).get("formulaValue", "")
+                    # Each link's text: the cell's, a run's, or a formula's (shown, so never blank).
+                    labels = {}
+                    if uri := value.get("userEnteredFormat", {}).get("textFormat", {}).get("link", {}).get("uri"):
+                        labels.setdefault(uri, []).append(string)
+                    for i, run in enumerate(runs):
+                        if uri := run.get("format", {}).get("link", {}).get("uri"):
+                            end = runs[i + 1].get("startIndex", len(string)) if i + 1 < len(runs) else len(string)
+                            labels.setdefault(uri, []).append(string[run.get("startIndex", 0) : end])
+                    for uri in DRIVE.findall(formula):
+                        labels.setdefault(uri, []).append(formula)
                     cell = {"sheetId": sheet_id, "row": r, "column": c, "value": value}
                     found += [
-                        ({**cell, "url": url}, url, "cell", place, visibility, "")
-                        for url in dict.fromkeys(urls)
-                        if url
+                        ({**cell, "url": url}, url, "cell", place, visibility, "".join(texts))
+                        for url, texts in labels.items()
                     ]
                     found += [
                         (None, uri, "chip", place, visibility, "")
@@ -157,22 +167,24 @@ def slide_links(deck, *, detail=False):
     """
     Return the deck's links as (place, URL): text runs', and shapes', lines' and images', on slides and notes.
 
-    With ``detail``, return (place, URL, part, page ID): part is text, shape, line, image, speaker_notes, or layout or
-    master for the links on the slides' layouts and masters.
+    With ``detail``, return (place, URL, part, page ID, text): part is text, shape, line, image, speaker_notes, or
+    layout or master for the links on the layouts and masters, and text is a text run's, or None for an object.
     """
     found = []
 
     def text(body, where, part, slide):
         for e in body.get("textElements", []):
-            if url := e.get("textRun", {}).get("style", {}).get("link", {}).get("url"):
+            run = e.get("textRun", {})
+            if url := run.get("style", {}).get("link", {}).get("url"):
                 span = {"type": "FIXED_RANGE", "startIndex": e.get("startIndex", 0), "endIndex": e["endIndex"]}
-                found.append(({**where, "kind": "text", "textRange": span}, url, part or "text", slide))
+                place = {**where, "kind": "text", "textRange": span}
+                found.append((place, url, part or "text", slide, run.get("content", "")))
 
     def walk(elements, part, slide):
         for element in elements or []:
             where = {"objectId": element["objectId"]}
             found.extend(
-                ({**where, "kind": kind}, url, part or kind, slide)
+                ({**where, "kind": kind}, url, part or kind, slide, None)
                 for kind in ("shape", "line", "image")
                 if (url := element.get(kind, {}).get(f"{kind}Properties", {}).get("link", {}).get("url"))
             )

@@ -287,3 +287,90 @@ def test_notebook_invalid(extractor, tmp_path):
     path.write_text(f"not json https://drive.google.com/file/d/{FILE}/view")
 
     assert [link.url for link in extractor.file(path)[0]] == [f"https://drive.google.com/file/d/{FILE}/view"]
+
+
+def visibilities(links):
+    return {link.url: (link.visibility, link.text) for link in links}
+
+
+def test_blank_html(extractor):
+    html = (
+        f'<p>Policy. <a href="{DOC_URL}"> </a></p><p><a href="{FILE_URL}"><img src="x.png"></a></p>'
+        f'<p><a href="{SHEET_URL}">&nbsp;</a> and again <a href="{SHEET_URL}">Sheet</a></p>'
+    )
+
+    assert visibilities(extractor.text(html, "html")) == {
+        DOC_URL: ("blank", ""),
+        FILE_URL: ("visible", ""),
+        SHEET_URL: ("visible", "Sheet"),
+    }
+    # The same in text, like an export read as text.
+    assert visibilities(extractor.text(html))[DOC_URL] == ("blank", "")
+
+
+def test_blank_markdown(extractor):
+    text = f"Policy.[ ]({DOC_URL}) and [![]({FILE_URL})]({FILE_URL})"
+
+    assert visibilities(extractor.text(text, "markdown")) == {DOC_URL: ("blank", ""), FILE_URL: ("visible", "")}
+
+
+def test_blank_hidden_stays_hidden(extractor):
+    html = f'<p>Text</p><!-- <a href="{DOC_URL}"> </a> -->'
+
+    assert visibilities(extractor.text(html, "html"))[DOC_URL] == ("source_only", "")
+
+
+def test_blank_docx(extractor, tmp_path):
+    path = tmp_path / "file.docx"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr(
+            "word/document.xml",
+            '<w:document><w:p><w:hyperlink r:id="rId1"><w:r><w:t xml:space="preserve"> </w:t></w:r></w:hyperlink>'
+            '<w:hyperlink r:id="rId2"><w:r><w:t>The file</w:t></w:r></w:hyperlink></w:p></w:document>',
+        )
+        z.writestr(
+            "word/_rels/document.xml.rels",
+            f'<Relationships><Relationship Id="rId1" Target="{DOC_URL}" TargetMode="External"/>'
+            f'<Relationship Id="rId2" Target="{FILE_URL}" TargetMode="External"/></Relationships>',
+        )
+
+    links, error = extractor.file(str(path))
+
+    assert error == ""
+    assert visibilities(links) == {DOC_URL: ("blank", ""), FILE_URL: ("visible", "The file")}
+
+
+def test_blank_pptx(extractor, tmp_path):
+    path = tmp_path / "file.pptx"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr(
+            "ppt/slides/slide1.xml",
+            '<p:sld><p:sp><p:nvSpPr><p:cNvPr id="2" name="Box"><a:hlinkClick r:id="rId3"/></p:cNvPr></p:nvSpPr>'
+            '<p:txBody><a:p><a:r><a:rPr><a:hlinkClick r:id="rId1"/></a:rPr><a:t> </a:t></a:r>'
+            '<a:r><a:rPr><a:hlinkClick r:id="rId2"/></a:rPr><a:t>File</a:t></a:r></a:p></p:txBody></p:sp></p:sld>',
+        )
+        z.writestr(
+            "ppt/slides/_rels/slide1.xml.rels",
+            f'<Relationships><Relationship Id="rId1" Target="{DOC_URL}" TargetMode="External"/>'
+            f'<Relationship Id="rId2" Target="{FILE_URL}" TargetMode="External"/>'
+            f'<Relationship Id="rId3" Target="{SHEET_URL}" TargetMode="External"/></Relationships>',
+        )
+
+    links, error = extractor.file(str(path))
+
+    assert error == ""
+    assert visibilities(links) == {
+        DOC_URL: ("blank", ""),
+        FILE_URL: ("visible", "File"),
+        SHEET_URL: ("visible", ""),
+    }
+
+
+def test_blank_xlsx_cell(extractor, tmp_path):
+    path = tmp_path / "file.xlsx"
+    xlsx(path, [("Visible", None, [("A1", " ", None, DOC_URL), ("A2", "Named", None, FILE_URL)])])
+
+    links, _ = extractor.file(str(path))
+    cells = {link.url: link.visibility for link in links if link.part == "cell"}
+
+    assert cells == {DOC_URL: "blank", FILE_URL: "visible"}

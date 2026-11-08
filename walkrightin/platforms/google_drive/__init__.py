@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar
 
+from walkrightin.extract.text import blank
 from walkrightin.model import CLOSED_FORM, RATE_LIMITED, SIGNIN, Link
 from walkrightin.platforms import Platform, Scan, join_key
 from walkrightin.platforms.google_drive import readers
@@ -283,13 +284,14 @@ class GoogleDrive(Platform):
     def api_links(self, user, item_id, mime):
         """Return (Links, error) from the Docs, Sheets or Slides API."""
         extractor = self.context.extractor
+        # (Link, its text, or None if it shows something without text).
         if mime == DOCUMENT:
             doc, error = self.client.document(user, item_id)
             if doc is None:
                 return [], error
             found = [
-                Link("", url, part=part, container=title)
-                for _, url, part, title in readers.doc_links(doc, detail=True)
+                (Link("", url, part=part, container=title), text)
+                for _, url, part, title, text in readers.doc_links(doc, detail=True)
             ]
         elif mime == SPREADSHEET:
             sheet, error = self.client.spreadsheet(user, item_id)
@@ -299,18 +301,28 @@ class GoogleDrive(Platform):
             for _, url, part, place, visibility, text in readers.sheet_links(sheet, detail=True):
                 fields = {"part": part, "container": place, "visibility": visibility}
                 if url:
-                    found.append(Link("", url, **fields))
+                    found.append((Link("", url, **fields), text if part == "cell" else None))
                 else:
-                    found += extractor.text(text, **fields)
+                    found += [(link, None) for link in extractor.text(text, **fields)]
         else:
             deck, error = self.client.presentation(user, item_id)
             if deck is None:
                 return [], error
             found = [
-                Link("", url, part=part, container=slide)
-                for _, url, part, slide in readers.slide_links(deck, detail=True)
+                (Link("", url, part=part, container=slide), text)
+                for _, url, part, slide, text in readers.slide_links(deck, detail=True)
             ]
-        return [link for link in found if extractor.is_link(link.url)], ""
+        labels = {}
+        for link, text in found:
+            labels.setdefault(link.url, []).append(text if text is None else text.strip())
+        blanks = {url for url, texts in labels.items() if blank(texts)}
+        return [
+            dataclasses.replace(link, visibility="blank")
+            if link.url in blanks and link.visibility == "visible"
+            else link
+            for link, _ in found
+            if extractor.is_link(link.url)
+        ], ""
 
     def comment_links(self, user, item_id, mime, key):
         """Return (Links in comments and replies, comments.csv rows, error)."""

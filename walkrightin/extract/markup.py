@@ -4,7 +4,7 @@ import re
 
 from markdown_it import MarkdownIt
 
-from walkrightin.extract.text import HTML_LINK, MD_LINK, normalize_href, text_of
+from walkrightin.extract.text import HTML_LINK, MD_LINK, html_label, normalize_href
 
 COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 SCRIPT = re.compile(r"<(script|style)\b[^>]*>.*?</\1\s*>", re.DOTALL | re.IGNORECASE)
@@ -47,8 +47,7 @@ def html_texts(text, shortlinks):
     """Return {URL: [text]} for the HTML anchors, using an image's alt text for an image wrapped in a link."""
     texts = {}
     for m in HTML_LINK.finditer(text):
-        if label := text_of(m.group(2)):
-            texts.setdefault(normalize_href(m.group(1), shortlinks), []).append(label)
+        texts.setdefault(normalize_href(m.group(1), shortlinks), []).append(html_label(m.group(2)))
     return texts
 
 
@@ -65,17 +64,19 @@ def markdown_texts(text, shortlinks):
     for token in tokens:
         if token.type != "inline" or not token.children:
             continue
-        href, label = None, []
+        href, label, image = None, [], False
         for child in token.children:
             if child.type == "link_open":
-                href, label = child.attrGet("href"), []
+                href, label, image = child.attrGet("href"), [], False
             elif child.type == "link_close" and href:
-                if joined := "".join(label).strip():
-                    texts.setdefault(normalize_href(str(href), shortlinks), []).append(joined)
+                joined = "".join(label).strip()
+                # An image shows something, even without alt text.
+                texts.setdefault(normalize_href(str(href), shortlinks), []).append(joined or (None if image else ""))
                 href = None
             elif href is not None and child.type in ("text", "code_inline"):
                 label.append(child.content)
             elif href is not None and child.type == "image":
+                image = True
                 label.append(child.content or child.attrGet("alt") or "")
     for m in MD_LINK.finditer(text):
         url = normalize_href(m.group(2), shortlinks)

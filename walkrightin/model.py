@@ -40,7 +40,8 @@ class Link:
     part: str = "body"
     #: Where inside the location: a tab, a sheet and cell, a slide, a comment.
     container: str = ""
-    #: visible, hidden, very_hidden (a hidden spreadsheet tab), or source_only (only in an HTML page's source).
+    #: visible, hidden, very_hidden (a hidden spreadsheet tab), source_only (only in an HTML page's source), or blank
+    #: (on text that is empty or only whitespace, everywhere the item links the URL).
     visibility: str = "visible"
     #: How an item was read: export, download, api, comments, listing or metadata. Empty for sources.
     channel: str = ""
