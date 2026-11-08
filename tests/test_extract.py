@@ -61,6 +61,12 @@ def test_html_parts(extractor):
     assert links[f"https://drive.google.com/open?id={DOC}"].part == "body"
 
 
+def test_html_percent_encoded_href(extractor):
+    links = extractor.text(f'<a href="{DOC_URL}?fbclid%3Dabc">Doc</a>', "html")
+
+    assert [(link.url, link.text) for link in links] == [(f"{DOC_URL}?fbclid%3Dabc", "Doc")]
+
+
 def test_html_wbr(extractor):
     links = extractor.text('<a href="https://bit.ly/do<wbr />c">https://bit.ly/do<wbr />c</a>', "html")
 
