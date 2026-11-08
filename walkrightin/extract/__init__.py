@@ -1,4 +1,4 @@
-"""Find links to Drive in text and files. Every format's URLs come from one raw pass; parsers add text and place."""
+"""Find links to platforms in text and files. Each format's URLs come from one raw pass; parsers add text and place."""
 
 import json
 import re
@@ -9,7 +9,7 @@ from urllib.parse import unquote
 from walkrightin.extract import markup, office, pdf
 from walkrightin.extract.text import find, link_texts
 from walkrightin.model import Link
-from walkrightin.urls import DRIVE, WRAPPERS, bare_ids, clean, drive_id, file_url, is_drive_link
+from walkrightin.urls import WRAPPERS, clean
 
 # Kinds of text, by file extension.
 KINDS = {
@@ -26,7 +26,6 @@ DOCUMENTS = (".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx")
 JOINED = "joined lines"
 TRUNCATED = "possibly truncated"
 CHECK = "check by hand"
-GOOGLE = re.compile(r"(?:docs|drive)\.google\.")
 OLE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 
 
@@ -42,9 +41,10 @@ def kind_of(path):
 
 class Extractor:
     """
-    Find the Drive URLs and short links in text and files, as Links without a location.
+    Find the platforms' URLs and short links in text and files, as Links without a location.
 
-    Short links are returned as found. The walk resolves them, and keeps those that lead to Drive.
+    Short links are returned as found. The walk resolves them, and keeps those that lead to a platform. The platforms
+    are the short links'.
     """
 
     def __init__(self, shortlinks, *, bare_ids=False, wrappers=WRAPPERS):
@@ -52,11 +52,15 @@ class Extractor:
         self.bare_ids = bare_ids
         self.wrappers = wrappers
 
+    @property
+    def platforms(self):
+        return self.shortlinks.platforms
+
     def is_link(self, url):
-        return bool(DRIVE.match(url)) or self.shortlinks.is_short(url)
+        return bool(self.platforms.match(url)) or self.shortlinks.is_short(url)
 
     def keep(self, url):
-        return is_drive_link(url) if DRIVE.match(url) else True
+        return self.platforms.identifies(url) if self.platforms.match(url) else True
 
     def text(self, content, kind="text", **fields):
         """Return the Links in text of a kind: text, markdown, html or rst. ``fields`` are set on each Link."""
@@ -76,11 +80,11 @@ class Extractor:
             text = " | ".join(dict.fromkeys(texts.get(f.url, []) + texts.get(unquote(f.url), [])))
             links.append(Link("", f.url, text, **{"part": part, "visibility": visibility, **fields}))
         if self.bare_ids:
-            linked = {drive_id(f.url) for f in found}
+            linked = {self.platforms.key(f.url)[0] for f in found}
             links += [
-                Link("", file_url(i), **{**fields, "part": "bare_id"})
-                for i in sorted(bare_ids(content))
-                if i not in linked
+                Link("", url, **{**fields, "part": "bare_id"})
+                for key, url in sorted(self.platforms.bare_ids(content))
+                if key not in linked
             ]
         return links
 
@@ -101,13 +105,13 @@ class Extractor:
         return self.text(data.decode("utf-8", "replace"), kind_of(path), **fields), ""
 
     def pdf(self, path, data, **fields):
-        body, error, split = pdf.read(path, data)
+        body, error, split = pdf.read(path, data, self.platforms.hosts)
         links = {link.url: link for link in self.text(body, **fields)}
         for fragment, joined in split:
-            rejoined = [link for link in self.text(joined, **fields) if self.leads_to_drive(link.url)]
+            rejoined = [link for link in self.text(joined, **fields) if self.leads_to_platform(link.url)]
             relevant = (
                 re.fullmatch(r"https?:/*", fragment)
-                or GOOGLE.search(fragment)
+                or (self.platforms.hosts and self.platforms.hosts.search(fragment))
                 or any(True for _ in self.shortlinks.finditer(fragment))
             )
             if not rejoined and relevant:
@@ -140,8 +144,8 @@ class Extractor:
                         links += self.text(joined(value), kind, **{"part": "output", "container": container, **fields})
         return links
 
-    def leads_to_drive(self, url):
-        return bool(DRIVE.match(url)) or bool(self.shortlinks.is_short(url) and self.shortlinks.resolve(url))
+    def leads_to_platform(self, url):
+        return bool(self.platforms.match(url)) or bool(self.shortlinks.is_short(url) and self.shortlinks.resolve(url))
 
     def sheet(self, path, **fields):
         """Return a Link for each link in each spreadsheet tab's cells, with the tab and its visibility."""

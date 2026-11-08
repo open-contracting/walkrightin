@@ -11,7 +11,7 @@ from walkrightin.model import Link
 @click.group()
 @click.option("-v", "--verbose", is_flag=True, help="Log each step")
 def main(verbose):
-    """Find the Google Drive files that public sources link to, and check whether each opens anonymously."""
+    """Find the files that public sources link to on platforms like Google Drive, and check whether each opens."""
     logging.basicConfig(
         format="%(levelname)s %(name)s: %(message)s", level=logging.INFO if verbose else logging.WARNING
     )
@@ -25,7 +25,7 @@ def main(verbose):
 @click.option("--no-walk", is_flag=True, help="Only run the sources and check their links")
 @click.option("--resume", is_flag=True, help="Continue an interrupted walk")
 def run(path, out, only, depth, no_walk, resume):
-    """Run the sources, check their links, and walk the Drive files they reach."""
+    """Run the sources, check their links, and walk the platforms' items they reach."""
     from walkrightin.walk import run as execute  # noqa: PLC0415
 
     config = configuration.load(path)
@@ -52,9 +52,9 @@ def check(urls):
 
 @main.command()
 @click.argument("paths", nargs=-1, required=True, type=click.Path(exists=True, dir_okay=False))
-@click.option("--bare-ids", is_flag=True, help="Also find file IDs outside URLs")
+@click.option("--bare-ids", is_flag=True, help="Also find platforms' IDs outside URLs")
 def extract(paths, bare_ids):
-    """Print the links to Drive in each file, as tab-separated values."""
+    """Print the links to platforms in each file, as tab-separated values."""
     from walkrightin.extract import Extractor  # noqa: PLC0415
     from walkrightin.shortlinks import ShortLinks  # noqa: PLC0415
 
@@ -73,6 +73,15 @@ def extract(paths, bare_ids):
 def sources():
     """List the installed source types."""
     from walkrightin.sources import registry  # noqa: PLC0415
+
+    for name, cls in sorted(registry().items()):
+        click.echo(f"{name}\t{(cls.__doc__ or '').strip().splitlines()[0]}")
+
+
+@main.command()
+def platforms():
+    """List the installed platforms."""
+    from walkrightin.platforms import registry  # noqa: PLC0415
 
     for name, cls in sorted(registry().items()):
         click.echo(f"{name}\t{(cls.__doc__ or '').strip().splitlines()[0]}")

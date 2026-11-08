@@ -1,5 +1,6 @@
 """Read a PDF's link annotations (with qpdf) and text (with pdftotext), and find URLs split across lines."""
 
+import functools
 import json
 import re
 import shutil
@@ -9,11 +10,15 @@ import subprocess
 # by more text is prose, and a line of digits is a footnote or page number.
 CONTINUATION = re.compile(r"[\w/?=&%#.~+:-]+", re.ASCII)
 PROSE = re.compile(r"[A-Za-z]+[.,;:!]?\s|\d+$")
-# A URL-like fragment, or a bare "http", at the end of a line.
-TAIL = re.compile(
-    r"(?<![\w.-])(?:(?:https?:/*|www\.|(?:[a-z0-9-]+\.)+[a-z]{2,}/|(?:docs|drive)\.google\.)\S*|https?)$",
-    re.IGNORECASE,
-)
+
+
+@functools.cache
+def tail(hosts):
+    """Return a pattern for a URL-like fragment, a platform's host, or a bare "http", at the end of a line."""
+    host = f"|{hosts}" if hosts else ""
+    return re.compile(
+        rf"(?<![\w.-])(?:(?:https?:/*|www\.|(?:[a-z0-9-]+\.)+[a-z]{{2,}}/{host})\S*|https?)$", re.IGNORECASE
+    )
 
 
 def uris(value):
@@ -30,11 +35,11 @@ def uris(value):
             yield from uris(v)
 
 
-def splits(lines):
+def splits(lines, hosts=None):
     """Return [(fragment, joined)] for each URL-like fragment that ends a line and continues on the next."""
     out = []
     for n, line in enumerate(lines):
-        m = TAIL.search(line.rstrip())
+        m = tail(hosts.pattern if hosts else "").search(line.rstrip())
         if not m:
             continue
         joined = m.group()
@@ -52,8 +57,8 @@ def splits(lines):
     return out
 
 
-def read(path, data):
-    """Return (text: link targets and body, error, split URLs)."""
+def read(path, data, hosts=None):
+    """Return (text: link targets and body, error, split URLs). ``hosts`` matches platforms' hosts."""
     missing = [tool for tool in ("qpdf", "pdftotext") if not shutil.which(tool)]
     if missing:
         return "", f"{' and '.join(missing)} not installed", []
@@ -81,4 +86,4 @@ def read(path, data):
     if errors and b"/Encrypt" in data:
         errors.append("encrypted")
     body = pdftotext.stdout.decode("utf-8", "ignore")
-    return "\n".join([*targets, body]), "; ".join(errors), splits(body.splitlines())
+    return "\n".join([*targets, body]), "; ".join(errors), splits(body.splitlines(), hosts)

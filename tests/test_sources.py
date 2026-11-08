@@ -81,14 +81,14 @@ def test_csv(context, tmp_path):
     ]
 
 
-def test_drive(context):
-    source = create(context, {"type": "drive", "ids": [DOC, DOC]})
+def test_google_drive(context):
+    source = create(context, {"type": "google_drive", "ids": [DOC, DOC]})
 
     assert [(link.location, link.url) for link in source.links()] == [
-        ("drive:ids", f"https://drive.google.com/file/d/{DOC}/view")
+        ("google_drive:ids", f"https://drive.google.com/file/d/{DOC}/view")
     ]
-    assert source.follow == {DOC}
-    assert create(context, {"type": "drive", "ids": [DOC], "follow": False}).follow == set()
+    assert source.follow == {f"google_drive:{DOC}"}
+    assert create(context, {"type": "google_drive", "ids": [DOC], "follow": False}).follow == set()
 
 
 def test_github_files(context, tmp_path):

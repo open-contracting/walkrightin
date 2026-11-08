@@ -9,9 +9,9 @@ from urllib.parse import urljoin
 
 import requests
 
-from walkrightin.model import CLOSED_FORM, ERROR, GONE, IDENTITY, NOT_FOUND, PUBLIC, RATE_LIMITED, REDIRECT, SIGNIN
+from walkrightin import platforms as platforms_module
+from walkrightin.model import ERROR, GONE, IDENTITY, NOT_FOUND, PUBLIC, RATE_LIMITED, REDIRECT, SIGNIN
 from walkrightin.output import read_json, write_json
-from walkrightin.urls import check_url
 
 MAX_REDIRECTS = 10
 
@@ -20,20 +20,26 @@ def now():
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def signin(url):
-    return "accounts.google.com" in url or "/ServiceLogin" in url
-
-
-def throttled(url):
-    return "google.com/sorry" in url
-
-
 class Checker:
-    """Requests URLs anonymously, at most ``concurrency`` at once, waiting ``delay`` seconds before each."""
+    """
+    Requests URLs anonymously, at most ``concurrency`` at once, waiting ``delay`` seconds before each.
+
+    A URL's platform decides which URL to request and what its redirects mean. ``platforms`` defaults to the installed
+    platforms.
+    """
 
     def __init__(
-        self, cache_path=None, ttl_days=7, concurrency=2, delay=1.0, session=None, timeout=20, user_agent=IDENTITY
+        self,
+        cache_path=None,
+        ttl_days=7,
+        concurrency=2,
+        delay=1.0,
+        session=None,
+        timeout=20,
+        user_agent=IDENTITY,
+        platforms=None,
     ):
+        self.platforms = platforms or platforms_module.default()
         self.user_agent = user_agent
         self.cache_path = cache_path
         self.ttl = timedelta(days=ttl_days)
@@ -46,7 +52,7 @@ class Checker:
 
     def check(self, url):
         """Return {"status", "http", "location", "checked_at"} for the URL, from the cache if fresh."""
-        key = check_url(url)
+        key = self.platforms.check_url(url)
         with self._lock:
             cached = self.cache.get(key)
         if cached and datetime.now(UTC) - datetime.fromisoformat(cached["checked_at"]) < self.ttl:
@@ -62,11 +68,11 @@ class Checker:
     def check_all(self, urls):
         """Return {URL: result} for the distinct URLs, requesting each URL to check once."""
         urls = list(dict.fromkeys(urls))
-        keys = list(dict.fromkeys(check_url(url) for url in urls))
+        keys = list(dict.fromkeys(self.platforms.check_url(url) for url in urls))
         with ThreadPoolExecutor(self.concurrency) as pool:
             results = dict(zip(keys, pool.map(self.check, keys), strict=True))
         self.save()
-        return {url: results[check_url(url)] for url in urls}
+        return {url: results[self.platforms.check_url(url)] for url in urls}
 
     def save(self):
         if not self.cache_path:
@@ -97,12 +103,8 @@ class Checker:
             if not response.is_redirect or not location:
                 break
             redirected = True
-            if signin(location):
-                return {"status": SIGNIN, "http": http, "location": first}
-            if throttled(location):
-                return {"status": RATE_LIMITED, "http": http, "location": first}
-            if "/closedform" in location:
-                return {"status": CLOSED_FORM, "http": http, "location": first}
+            if status := self.platforms.redirect_status(url, location):
+                return {"status": status, "http": http, "location": first}
             current = urljoin(current, location)
             try:
                 response = self.get(current)

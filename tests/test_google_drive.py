@@ -1,6 +1,6 @@
 import pytest
 
-from walkrightin import google
+from walkrightin.platforms.google_drive import client, readers
 
 DOC = {
     "tabs": [
@@ -100,7 +100,7 @@ DOC = {
 
 def test_doc_links_plain():
     # As drive-sharing's repoint consumes them: ranges for text runs, None for chips.
-    assert google.doc_links(DOC) == [
+    assert readers.doc_links(DOC) == [
         ({"tabId": "t.0", "startIndex": 1, "endIndex": 5}, "A"),
         (None, "CHIP"),
         ({"tabId": "t.0", "startIndex": 5, "endIndex": 9}, "S"),
@@ -110,7 +110,7 @@ def test_doc_links_plain():
 
 
 def test_doc_links_detail():
-    assert [(url, part, title) for _, url, part, title in google.doc_links(DOC, detail=True)] == [
+    assert [(url, part, title) for _, url, part, title in readers.doc_links(DOC, detail=True)] == [
         ("A", "body", "Main"),
         ("CHIP", "chip", "Main"),
         ("S", "suggestion", "Main"),
@@ -155,7 +155,7 @@ SHEET = {
 
 def test_sheet_links_plain():
     assert [
-        (where and (where["sheetId"], where["row"], where["column"]), url) for where, url in google.sheet_links(SHEET)
+        (where and (where["sheetId"], where["row"], where["column"]), url) for where, url in readers.sheet_links(SHEET)
     ] == [
         ((7, 1, 26), "CELL"),
         ((7, 1, 26), "RUN"),
@@ -165,7 +165,7 @@ def test_sheet_links_plain():
 
 
 def test_sheet_links_detail():
-    assert [row[1:] for row in google.sheet_links(SHEET, detail=True)] == [
+    assert [row[1:] for row in readers.sheet_links(SHEET, detail=True)] == [
         ("CELL", "cell", "Data!AA2", "hidden", ""),
         ("RUN", "cell", "Data!AA2", "hidden", ""),
         (None, "note", "Data!AA2", "hidden", "see NOTE"),
@@ -176,7 +176,7 @@ def test_sheet_links_detail():
 
 
 def test_column():
-    assert [google.column(i) for i in (0, 25, 26, 701, 702)] == ["A", "Z", "AA", "ZZ", "AAA"]
+    assert [readers.column(i) for i in (0, 25, 26, 701, 702)] == ["A", "Z", "AA", "ZZ", "AAA"]
 
 
 DECK = {
@@ -231,8 +231,8 @@ DECK = {
 
 
 def test_slide_links():
-    assert [url for _, url in google.slide_links(DECK)] == ["SHAPE", "TEXT", "IMAGE", "LINE", "NOTE"]
-    assert [(url, part, slide) for _, url, part, slide in google.slide_links(DECK, detail=True)] == [
+    assert [url for _, url in readers.slide_links(DECK)] == ["SHAPE", "TEXT", "IMAGE", "LINE", "NOTE"]
+    assert [(url, part, slide) for _, url, part, slide in readers.slide_links(DECK, detail=True)] == [
         ("SHAPE", "shape", "s1"),
         ("TEXT", "text", "s1"),
         ("IMAGE", "image", "s1"),
@@ -247,8 +247,8 @@ def test_form_page_texts():
     data = '[null, ["Intro", [[1, "Q1", null, 0, [[2, [["A"]]]]]]], "/forms"]'
     html = f"<script>var FB_PUBLIC_LOAD_DATA_ = {data};</script>"
 
-    assert google.form_page_texts(html) == ["Intro", "Q1", "A", "/forms"]
-    assert google.form_page_texts("<html></html>") is None
+    assert readers.form_page_texts(html) == ["Intro", "Q1", "A", "/forms"]
+    assert readers.form_page_texts("<html></html>") is None
 
 
 def test_form_texts():
@@ -265,7 +265,7 @@ def test_form_texts():
         ],
     }
 
-    assert google.form_texts(form) == [("", "T\nD"), ("q1", "Q\nO")]
+    assert readers.form_texts(form) == [("", "T\nD"), ("q1", "Q\nO")]
 
 
 @pytest.mark.parametrize(
@@ -277,11 +277,11 @@ def test_form_texts():
     ],
 )
 def test_accepting(form, expected):
-    assert google.accepting(form) is expected
+    assert readers.accepting(form) is expected
 
 
 def test_users_for():
-    g = google.Google("key.json", ["a@example.org", "b@example.org"], "example.org")
+    g = client.Client("key.json", ["a@example.org", "b@example.org"], "example.org")
 
     assert g.users_for("owner@example.org") == ["owner@example.org", "a@example.org", "b@example.org"]
     assert g.users_for("someone@elsewhere.org") == ["a@example.org", "b@example.org"]
@@ -289,9 +289,9 @@ def test_users_for():
 
 
 def test_disposition_ext():
-    assert google.disposition_ext('attachment; filename="Report 2020.PDF"') == "pdf"
-    assert google.disposition_ext("attachment; filename*=UTF-8''r%C3%A9sum%C3%A9.docx") == "docx"
-    assert google.disposition_ext("") == ""
+    assert client.disposition_ext('attachment; filename="Report 2020.PDF"') == "pdf"
+    assert client.disposition_ext("attachment; filename*=UTF-8''r%C3%A9sum%C3%A9.docx") == "docx"
+    assert client.disposition_ext("") == ""
 
 
 def test_link(monkeypatch):
@@ -312,9 +312,9 @@ def test_link(monkeypatch):
         ],
     }
     monkeypatch.setattr(
-        google.Google, "pages", lambda _self, _user, url, _key, _params: (responses[url.split("/")[-2]], "")
+        client.Client, "pages", lambda _self, _user, url, _key, _params: (responses[url.split("/")[-2]], "")
     )
-    g = google.Google()
+    g = client.Client()
 
     assert {key: g.link("user", key) for key in responses} == {
         "unreadable": ("?", False, ""),

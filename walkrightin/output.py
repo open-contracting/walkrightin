@@ -37,7 +37,7 @@ ITEM_FIELDS = [
     "read_as",
     "name",
     "mime_type",
-    "drive_id",
+    "space",
     "owner",
     "modified",
     "size",

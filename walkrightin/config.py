@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from walkrightin.model import IDENTITY
+from walkrightin.platforms import registry
 
 CHANNELS = ("export", "api", "comments", "metadata")
 
@@ -14,10 +15,8 @@ CHANNELS = ("export", "api", "comments", "metadata")
 @dataclass
 class Walk:
     max_depth: int = 8
-    #: A file of Drive IDs, one per line, to follow whatever their check.
+    #: A file of item keys (like ``google_drive:ID``), one per line, to follow whatever their check.
     also_follow: str | None = None
-    #: A CSV of published_id,file_id, to map published URLs (/d/e/...) to their files.
-    aliases: str | None = None
     max_download_mb: int = 200
     max_text_kb: int = 1000
     #: 0 disables walking folders, and "all" walks every folder whatever its size.
@@ -25,7 +24,7 @@ class Walk:
     channels: list = field(default_factory=lambda: list(CHANNELS))
     #: The most files owned outside the organization to read in a row, from a source or an own file. None is no limit.
     max_outside_hops: int | None = None
-    #: Whether to read CSV files in Drive. Off by default: their URLs are usually data, not links.
+    #: Whether to read CSV files. Off by default: their URLs are usually data, not links.
     download_csv: bool = False
     workers: int = 4
 
@@ -37,7 +36,7 @@ class Check:
     concurrency: int = 2
     delay: float = 1.0
     ttl_days: int = 7
-    #: The User-Agent of anonymous requests to Drive, if not walkrightin's.
+    #: The User-Agent of anonymous requests to platforms, if not walkrightin's.
     user_agent: str = IDENTITY
 
 
@@ -50,26 +49,12 @@ class ShortLinks:
 
 
 @dataclass
-class Google:
-    #: A service account's key file, with domain-wide delegation. WALKRIGHTIN_CREDENTIALS overrides it.
-    credentials: str | None = None
-    #: The users to act as, in order.
-    subjects: list = field(default_factory=list)
-    #: An owner in this domain is tried first.
-    domain: str | None = None
-    #: The scopes that the service account's domain-wide delegation authorizes. Read-only Drive is enough.
-    scopes: list = field(default_factory=lambda: ["https://www.googleapis.com/auth/drive.readonly"])
-    #: A CSV with ``driveid`` and ``user`` columns: the user to read each shared drive's permissions as, like an
-    #: organizer, since a viewer sees none.
-    drive_readers: str | None = None
-
-
-@dataclass
 class Config:
     walk: Walk = field(default_factory=Walk)
     check: Check = field(default_factory=Check)
     short_links: ShortLinks = field(default_factory=ShortLinks)
-    google: Google = field(default_factory=Google)
+    #: Each platform's options, by name: an instance of the platform's ``options`` dataclass.
+    platforms: dict = field(default_factory=dict)
     sources: list = field(default_factory=list)
     cache_dir: str = "~/.cache/walkrightin"
     #: Extra redirect wrappers, as [host suffix, path, [query parameters]].
@@ -91,7 +76,7 @@ def table(cls, data, name):
 
 
 # The options, by table, that are paths, resolved relative to the config file.
-PATHS = {"walk": ("also_follow", "aliases"), "google": ("drive_readers",)}
+PATHS = {"walk": ("also_follow",)}
 SOURCE_PATHS = ("path",)
 
 
@@ -113,6 +98,21 @@ def load(path=None, data=None):
         for key in keys:
             if data.get(name, {}).get(key):
                 data[name] = {**data[name], key: resolve(data[name][key])}
+    classes = registry()
+    tables = data.pop("platforms", {})
+    if unknown := set(tables) - set(classes):
+        msg = f"unknown platform(s): {', '.join(sorted(unknown))} (installed: {', '.join(sorted(classes))})"
+        raise ValueError(msg)
+    platforms = {}
+    for name, cls in sorted(classes.items()):
+        options = dict(tables.get(name, {}))
+        for key in cls.paths:
+            if options.get(key):
+                options[key] = resolve(options[key])
+        for key, variable in cls.environ.items():
+            if value := os.getenv(variable):
+                options[key] = value
+        platforms[name] = table(cls.options, options, f"platforms.{name}")
     sources = []
     for source in data.pop("sources", []):
         if "type" not in source:
@@ -129,7 +129,7 @@ def load(path=None, data=None):
         walk=table(Walk, data.pop("walk", {}), "walk"),
         check=table(Check, data.pop("check", {}), "check"),
         short_links=table(ShortLinks, data.pop("short_links", {}), "short_links"),
-        google=table(Google, data.pop("google", {}), "google"),
+        platforms=platforms,
         sources=sources,
         cache_dir=str(Path(data.pop("cache_dir", Config.cache_dir)).expanduser()),
         wrappers=data.pop("wrappers", []),
@@ -137,8 +137,6 @@ def load(path=None, data=None):
     if data:
         msg = f"unknown key(s): {', '.join(sorted(data))}"
         raise ValueError(msg)
-    if env := os.getenv("WALKRIGHTIN_CREDENTIALS"):
-        config.google.credentials = env
     if config.check.items not in ("all", "unreadable"):
         msg = '[check] items must be "all" or "unreadable"'
         raise ValueError(msg)

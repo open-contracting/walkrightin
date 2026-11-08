@@ -1,11 +1,11 @@
-"""Find Drive URLs and short links in text, tolerating markup, code and broken syntax."""
+"""Find platforms' URLs and short links in text, tolerating markup, code and broken syntax."""
 
 import html
 import re
 from dataclasses import dataclass
 from urllib.parse import unquote
 
-from walkrightin.urls import DRIVE, WRAPPERS, clean, drive_id, normalize_short, strip, unwrap
+from walkrightin.urls import WRAPPERS, clean, normalize_short, strip, unwrap
 
 MD_LINK = re.compile(r"\[([^\]]+)\]\(\s*<?([^\s)>]+)")
 HTML_LINK = re.compile(r"""<a\b[^>]*?href\s*=\s*["']([^"']+)["'][^>]*>(.*?)</a>""", re.DOTALL | re.IGNORECASE)
@@ -24,18 +24,18 @@ def wrapper_pattern(wrappers=WRAPPERS):
     return re.compile(rf"https?://(?:[\w-]+\.)*(?:{hosts})/[^\s\"'<>]+", re.IGNORECASE)
 
 
-def key(url):
-    return drive_id(url) or url.split("#")[0]
-
-
-def find(text, shortlinks, wrappers=WRAPPERS):
+def find(text, shortlinks, wrappers=WRAPPERS, platforms=None):
     """
-    Return the Drive URLs and short links in cleaned text, as Found, in order, each once.
+    Return the platforms' URLs and short links in cleaned text, as Found, in order, each once.
 
     URLs inside redirect wrappers are unwrapped. A last pass over the percent-decoded text only fills gaps, since
-    decoding can also break a URL that was fine (%20 becomes a space).
+    decoding can also break a URL that was fine (%20 becomes a space). ``platforms`` defaults to the short links'.
     """
+    platforms = platforms or shortlinks.platforms
     found, seen, wrapped = [], set(), []
+
+    def key(url):
+        return platforms.key(url)[0] or url.split("#")[0]
 
     def add(url, span, raw=""):
         # An ellipsis marks a URL shortened for display.
@@ -48,7 +48,7 @@ def find(text, shortlinks, wrappers=WRAPPERS):
         url = strip(unwrap(html.unescape(m.group()), wrappers))
         if url != strip(html.unescape(m.group())):
             wrapped.append(m.span())
-            if DRIVE.match(url):
+            if platforms.match(url):
                 add(url, m.span())
             elif shortlinks.is_short(url):
                 add(normalize_short(url), m.span())
@@ -56,16 +56,16 @@ def find(text, shortlinks, wrappers=WRAPPERS):
     def inside(start):
         return any(s <= start < e for s, e in wrapped)
 
-    for m in DRIVE.finditer(text):
+    for m in platforms.finditer(text):
         if not inside(m.start()):
             add(strip(m.group()), m.span(), m.group())
     for m in shortlinks.finditer(text):
         if not inside(m.start()):
             add(normalize_short(strip(m.group())), m.span(), m.group())
 
-    keys = {key(f.url) for f in found if DRIVE.match(f.url)}
+    keys = {key(f.url) for f in found if platforms.match(f.url)}
     decoded = clean(unquote(text))
-    for m in DRIVE.finditer(decoded):
+    for m in platforms.finditer(decoded):
         url = strip(m.group())
         if key(url) not in keys and not m.group().endswith("..."):
             keys.add(key(url))

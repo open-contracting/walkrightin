@@ -16,11 +16,18 @@ def test_sources():
     assert result.exit_code == 0
     assert [line.split("\t")[0] for line in result.output.splitlines()] == [
         "csv",
-        "drive",
         "files",
         "github",
+        "google_drive",
         "wordpress",
     ]
+
+
+def test_platforms():
+    result = CliRunner().invoke(main, ["platforms"])
+
+    assert result.exit_code == 0
+    assert [line.split("\t")[0] for line in result.output.splitlines()] == ["google_drive"]
 
 
 def test_extract(tmp_path):

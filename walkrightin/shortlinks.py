@@ -1,21 +1,22 @@
-"""Recognize short links (bit.ly, forms.gle, etc.) and follow them to the Drive files they lead to."""
+"""Recognize short links (bit.ly, forms.gle, etc.) and follow them to the platforms' items they lead to."""
 
 import re
 import threading
-from urllib.parse import parse_qs, unquote, urljoin, urlsplit
+from urllib.parse import urljoin, urlsplit
 
 import requests
 from antispam_link_shorteners import link_shorteners_list
 
+from walkrightin import platforms as platforms_module
 from walkrightin.model import IDENTITY
 from walkrightin.output import read_json, write_json
-from walkrightin.urls import DRIVE, END, normalize_short
+from walkrightin.urls import END, normalize_short
 
 # A host and path, with or without a scheme. The host must start the match, so that "t.co/" isn't matched in
 # "microsoft.co/".
 CANDIDATE = re.compile(rf"(?<![\w.@-])(?:https?://)?(?:www\.)?((?:[a-z0-9-]+\.)+[a-z]{{2,}})/{END}", re.IGNORECASE)
 MAX_REDIRECTS = 10
-# Shorteners in the built-in list that lead only to their own site, never to Drive.
+# Shorteners in the built-in list that lead only to their own site, never to a platform.
 SINGLE_SITE = {
     "a.co",
     "amzn.to",
@@ -34,14 +35,23 @@ SINGLE_SITE = {
 
 class ShortLinks:
     """
-    Short-link domains, and the Drive URLs that short links lead to, cached.
+    Short-link domains, and the platform URLs that short links lead to, cached.
 
     The default domains are antispam-link-shorteners' list, without SINGLE_SITE. ``domains`` replaces them.
+    ``platforms`` defaults to the installed platforms.
     """
 
     def __init__(
-        self, domains=None, extra_domains=(), exclude_domains=(), session=None, timeout=20, user_agent=IDENTITY
+        self,
+        domains=None,
+        extra_domains=(),
+        exclude_domains=(),
+        session=None,
+        timeout=20,
+        user_agent=IDENTITY,
+        platforms=None,
     ):
+        self.platforms = platforms or platforms_module.default()
         self.user_agent = user_agent
         base = set(link_shorteners_list()) - SINGLE_SITE if domains is None else {d.lower() for d in domains}
         self.domains = (base | {d.lower() for d in extra_domains}) - {d.lower() for d in exclude_domains}
@@ -64,7 +74,7 @@ class ShortLinks:
                 yield m
 
     def follow(self, url):
-        """Return (the first Drive URL in the short link's redirects or None, the final status, the final URL)."""
+        """Return (the first platform URL in the short link's redirects or None, the final status, the final URL)."""
         url = normalize_short(url)
         with self._lock:
             if url in self._cache:
@@ -85,13 +95,13 @@ class ShortLinks:
         write_json(path, cache)
 
     def resolve(self, url):
-        """Return the Drive URL that the short link leads to, or None."""
+        """Return the platform URL that the short link leads to, or None."""
         return self.follow(url)[0]
 
     def _follow(self, url):
         current, status = url, "000"
         for _ in range(MAX_REDIRECTS + 1):
-            if found := drive_target(current):
+            if found := self.platforms.target(current):
                 return found, status, current
             try:
                 response = self.session.get(
@@ -107,17 +117,6 @@ class ShortLinks:
             status = str(response.status_code)
             location = response.headers.get("Location")
             if not response.is_redirect or not location:
-                return drive_target(current), status, current
+                return self.platforms.target(current), status, current
             current = urljoin(current, location)
-        return drive_target(current), status, current
-
-
-def drive_target(url):
-    """Return the Drive URL that a URL is, or that a sign-in page continues to, or None."""
-    if DRIVE.match(url):
-        return url
-    query = parse_qs(urlsplit(url).query)
-    for value in query.get("continue", []) + query.get("followup", []):
-        if DRIVE.match(unquote(value)):
-            return unquote(value)
-    return None
+        return self.platforms.target(current), status, current

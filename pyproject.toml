@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "walkrightin"
 version = "0.0.1"
 authors = [{name = "Open Contracting Partnership", email = "data@open-contracting.org"}]
-description = "Find the Google Drive files that public sources link to, and check whether each opens anonymously"
+description = "Find the files that public sources link to on Google Drive and other platforms, and check whether each opens anonymously"
 readme = "README.rst"
 license = {text = "BSD"}
 urls = {Homepage = "https://github.com/open-contracting/walkrightin"}
@@ -30,7 +30,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-google = [
+google-drive = [
     "google-auth",
 ]
 test = [
@@ -46,10 +46,13 @@ walkrightin = "walkrightin.cli:main"
 
 [project.entry-points."walkrightin.sources"]
 csv = "walkrightin.sources.csvfile:CSVSource"
-drive = "walkrightin.sources.drive:DriveSource"
 files = "walkrightin.sources.files:FilesSource"
 github = "walkrightin.sources.github:GitHubSource"
+google_drive = "walkrightin.platforms.google_drive:GoogleDriveSource"
 wordpress = "walkrightin.sources.wordpress:WordPressSource"
+
+[project.entry-points."walkrightin.platforms"]
+google_drive = "walkrightin.platforms.google_drive:GoogleDrive"
 
 [tool.setuptools.packages.find]
 exclude = [
@@ -75,6 +78,7 @@ ignore-variadic-names = true
 
 [tool.ruff.lint.per-file-ignores]
 "docs/conf.py" = ["D100", "INP001"]
+"walkrightin/platforms/__init__.py" = ["ARG002"]  # default hooks ignore their arguments
 "tests/*" = [
     "ARG001", "D", "FBT003", "INP001", "PLR2004", "S", "TRY003",
     "ARG002",  # fakes have the signatures of what they replace

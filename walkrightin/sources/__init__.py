@@ -35,8 +35,12 @@ class Context:
     max_text_bytes: int
     #: An HTTP session.
     session: Any
-    #: Drive access, for a source that reads Drive.
-    google: Any = None
+    #: The platforms, for a source that lists a platform's items. By default, the extractor's.
+    platforms: Any = None
+
+    def __post_init__(self):
+        if self.platforms is None:
+            self.platforms = self.extractor.platforms
 
 
 class Source(abc.ABC):
@@ -52,7 +56,7 @@ class Source(abc.ABC):
             self.extractor = Extractor(
                 context.extractor.shortlinks, bare_ids=True, wrappers=context.extractor.wrappers
             )
-        #: Drive IDs to follow whatever their check, like the files that a ``drive`` source names.
+        #: Item keys to follow whatever their check, like the items that a platform's source names.
         self.follow = set()
         #: Files not read because of a size limit.
         self.skipped_for_size = 0

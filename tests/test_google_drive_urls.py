@@ -1,7 +1,8 @@
 import pytest
 
-from walkrightin import urls
+from walkrightin.platforms.google_drive import urls
 from walkrightin.urls import strip as strip_url
+from walkrightin.urls import unwrap
 
 from .conftest import DOC
 
@@ -92,7 +93,7 @@ def test_bare_ids():
     ],
 )
 def test_unwrap(url, expected):
-    assert urls.unwrap(url) == expected
+    assert unwrap(url) == expected
 
 
 def test_strip():

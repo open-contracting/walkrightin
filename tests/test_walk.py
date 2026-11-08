@@ -105,6 +105,10 @@ class FakeGoogle:
         return url, None, "404 Not Found"
 
 
+def k(file_id):
+    return f"google_drive:{file_id}"
+
+
 def make_run(tmp_path, google, statuses, sources=None, walk=None, check=None, google_config=None, **kwargs):
     seeds = tmp_path / "seeds.csv"
     if not seeds.exists():
@@ -114,13 +118,13 @@ def make_run(tmp_path, google, statuses, sources=None, walk=None, check=None, go
         "walk": {"channels": ["export", "comments"], **(walk or {})},
         "check": {"delay": 0, **(check or {})},
         "sources": sources or [{"type": "csv", "name": "seeds", "path": str(seeds)}],
-        "google": google_config or {},
+        "platforms": {"google_drive": google_config or {}},
     }
     walk_enabled = kwargs.pop("walk_enabled", True)
     run = Run(configuration.load(data=data), str(tmp_path / "out"), walk=walk_enabled, **kwargs)
-    run.shortlinks = FakeShortLinks({"https://bit.ly/sheet": SHEET_URL})
+    run.shortlinks = FakeShortLinks({"https://bit.ly/sheet": SHEET_URL}, platforms=run.platforms)
     run.extractor.shortlinks = run.shortlinks
-    run.google = google
+    run.platforms["google_drive"].client = google
 
     def check(url):
         status = next((s for i, s in statuses.items() if i in url), "not_found")
@@ -147,22 +151,22 @@ def test_anonymous(tmp_path):
 
     found = items(tmp_path)
     assert {i: (r["depth"], r["linked_from"], r["followed"], r["status"]) for i, r in found.items()} == {
-        DOC: ("0", "https://example.org/page", "1", "public"),
-        FILE: ("1", DOC, "", "signin"),
-        SHEET: ("1", DOC, "1", "public"),
+        k(DOC): ("0", "https://example.org/page", "1", "public"),
+        k(FILE): ("1", k(DOC), "", "signin"),
+        k(SHEET): ("1", k(DOC), "1", "public"),
     }
     links = read(tmp_path, "links.csv")
     assert [(r["source"], r["item_id"], r["text"], r["short_url"], r["url_status"], r["depth"]) for r in links] == [
-        ("seeds", DOC, "", "", "public", "0"),
-        ("walk", FILE, "File", "", "", "0"),
-        ("walk", SHEET, "Sheet", "https://bit.ly/sheet", "", "0"),
+        ("seeds", k(DOC), "", "", "public", "0"),
+        ("walk", k(FILE), "File", "", "", "0"),
+        ("walk", k(SHEET), "Sheet", "https://bit.ly/sheet", "", "0"),
     ]
     assert links[1]["location"] == DOC_URL
     assert links[1]["channel"] == "export"
     scans = read(tmp_path, "scans.csv")
     assert [(r["item_id"], r["read_as"], r["links"]) for r in scans] == [
-        (DOC, "anonymous", "2"),
-        (SHEET, "anonymous", "0"),
+        (k(DOC), "anonymous", "2"),
+        (k(SHEET), "anonymous", "0"),
     ]
     assert (result.links, result.items, result.rate_limited) == (3, 3, 0)
     run_json = json.loads((tmp_path / "out" / "run.json").read_text())
@@ -176,9 +180,9 @@ def test_depth_limit(tmp_path):
     make_run(tmp_path, google, {DOC: "public", SHEET: "public"}, walk={"max_depth": 1}).execute()
 
     found = items(tmp_path)
-    assert set(found) == {DOC, SHEET}
-    assert found[SHEET]["followed"] == "1"
-    assert [r["item_id"] for r in read(tmp_path, "scans.csv")] == [DOC]
+    assert set(found) == {k(DOC), k(SHEET)}
+    assert found[k(SHEET)]["followed"] == "1"
+    assert [r["item_id"] for r in read(tmp_path, "scans.csv")] == [k(DOC)]
 
 
 def credentialed(**kwargs):
@@ -213,26 +217,26 @@ def test_folders(tmp_path, limit, reached, note):
     run.execute()
 
     found = items(tmp_path)
-    assert set(found) == reached
-    assert found[DOC]["link_role"] == "reader"
-    assert found[DOC]["read_as"] == "staff@example.org"
+    assert set(found) == {k(i) for i in reached}
+    assert found[k(DOC)]["link_role"] == "reader"
+    assert found[k(DOC)]["read_as"] == "staff@example.org"
     # Readable roles aren't checked anonymously.
-    assert found[DOC]["status"] == ""
-    folder_scans = [r for r in read(tmp_path, "scans.csv") if r["item_id"] == FOLDER_ID]
+    assert found[k(DOC)]["status"] == ""
+    folder_scans = [r for r in read(tmp_path, "scans.csv") if r["item_id"] == k(FOLDER_ID)]
     if note is None:
         assert folder_scans == []
     else:
         assert [r["note"] for r in folder_scans] == [note]
     if CHILD in reached:
-        child = next(r for r in read(tmp_path, "links.csv") if r["item_id"] == CHILD)
+        child = next(r for r in read(tmp_path, "links.csv") if r["item_id"] == k(CHILD))
         assert (child["part"], child["channel"], child["text"], child["location"]) == (
             "folder_child",
             "listing",
             "Child",
             FOLDER_URL,
         )
-        assert found[CHILD]["depth"] == "2"
-        assert found[CHILD]["followed"] == ""
+        assert found[k(CHILD)]["depth"] == "2"
+        assert found[k(CHILD)]["followed"] == ""
 
 
 def test_anonymous_fallback(tmp_path):
@@ -244,9 +248,9 @@ def test_anonymous_fallback(tmp_path):
     run.execute()
 
     found = items(tmp_path)
-    assert found[DOC]["error"] == "no access"
-    assert found[DOC]["followed"] == "1"
-    assert [(r["item_id"], r["read_as"]) for r in read(tmp_path, "scans.csv")] == [(DOC, "anonymous")]
+    assert found[k(DOC)]["error"] == "no access"
+    assert found[k(DOC)]["followed"] == "1"
+    assert [(r["item_id"], r["read_as"]) for r in read(tmp_path, "scans.csv")] == [(k(DOC), "anonymous")]
     assert (DOC, None, False) in google.exported_as
 
 
@@ -255,13 +259,13 @@ def test_no_access_not_public(tmp_path):
     google.files.pop(DOC)
     make_run(tmp_path, google, {DOC: "signin"}).execute()
 
-    assert items(tmp_path)[DOC]["followed"] == ""
+    assert items(tmp_path)[k(DOC)]["followed"] == ""
     assert read(tmp_path, "scans.csv") == []
 
 
 def test_also_follow_and_readers(tmp_path):
     ids = tmp_path / "ids.txt"
-    ids.write_text(f"{DOC}\n")
+    ids.write_text(f"{k(DOC)}\n")
     readers = tmp_path / "drives.csv"
     readers.write_text("user,driveid,label\norganizer@example.org,0ADrive,internal\n")
     google = credentialed()
@@ -280,9 +284,9 @@ def test_also_follow_and_readers(tmp_path):
     run.execute()
 
     found = items(tmp_path)
-    assert found[DOC]["followed"] == "1"
-    assert (found[FOLDER_ID]["link_inherited"], found[FOLDER_ID]["link_from"]) == ("1", "1ParentFolder")
-    assert found[DOC]["link_inherited"] == ""
+    assert found[k(DOC)]["followed"] == "1"
+    assert (found[k(FOLDER_ID)]["link_inherited"], found[k(FOLDER_ID)]["link_from"]) == ("1", "1ParentFolder")
+    assert found[k(DOC)]["link_inherited"] == ""
     # The drive's reader, else (for an unlisted drive) whoever can see the item.
     assert google.read_as[:2] == [("organizer@example.org", DOC), ("staff@example.org", FOLDER_ID)]
 
@@ -306,8 +310,12 @@ def test_comments(tmp_path):
     make_run(tmp_path, google, {}, walk={"max_folder_children": 0}, check={"items": "unreadable"}).execute()
 
     links = {r["item_id"]: r for r in read(tmp_path, "links.csv") if r["channel"] == "comments"}
-    assert (links[SHEET]["part"], links[SHEET]["container"], links[SHEET]["text"]) == ("comment", "c1", "this")
-    assert links[FILE]["container"] == "c1/r1"
+    assert (links[k(SHEET)]["part"], links[k(SHEET)]["container"], links[k(SHEET)]["text"]) == (
+        "comment",
+        "c1",
+        "this",
+    )
+    assert links[k(FILE)]["container"] == "c1/r1"
     comments = [
         (r["comment_id"], r["reply_id"], r["me"], r["resolved"], r["quote_present"])
         for r in read(tmp_path, "comments.csv")
@@ -331,7 +339,7 @@ def test_bare_ids_verified(tmp_path):
     make_run(tmp_path, FakeGoogle(), statuses, sources=sources, walk={"max_depth": 0}).execute()
 
     bare = [r["item_id"] for r in read(tmp_path, "links.csv") if r["part"] == "bare_id"]
-    assert bare == [FILE[:33]]
+    assert bare == [k(FILE[:33])]
 
 
 def test_refresh_one_source(tmp_path):
@@ -347,7 +355,10 @@ def test_refresh_one_source(tmp_path):
 
     make_run(tmp_path, FakeGoogle(), statuses, sources=sources, walk={"max_depth": 0}, only=["other"]).execute()
 
-    assert [(r["source"], r["item_id"]) for r in read(tmp_path, "links.csv")] == [("seeds", DOC), ("other", SHEET)]
+    assert [(r["source"], r["item_id"]) for r in read(tmp_path, "links.csv")] == [
+        ("seeds", k(DOC)),
+        ("other", k(SHEET)),
+    ]
     assert json.loads((tmp_path / "out" / "run.json").read_text())["refreshed"] == ["other"]
 
 
@@ -414,7 +425,7 @@ def test_max_outside_hops(tmp_path, limit, scanned, reached):
     result = make_run(tmp_path, google, {}, walk=walk, check={"items": "unreadable"}).execute()
 
     found = items(tmp_path)
-    assert [found[i]["outside_hops"] for i in (DOC, *outside) if i in found] == ["0", "1", "2", "3"][:reached]
+    assert [found[k(i)]["outside_hops"] for i in (DOC, *outside) if k(i) in found] == ["0", "1", "2", "3"][:reached]
     assert len({r["item_id"] for r in read(tmp_path, "scans.csv")}) == scanned
     assert len(found) == reached
     assert result.skipped_for_outside_hops == (1 if limit is not None else 0)
@@ -426,9 +437,12 @@ def test_description(tmp_path):
     walk = {"channels": ["export", "metadata"], "max_folder_children": 0}
     make_run(tmp_path, google, {}, walk=walk, check={"items": "unreadable"}).execute()
 
-    link = next(r for r in read(tmp_path, "links.csv") if r["item_id"] == SHEET)
+    link = next(r for r in read(tmp_path, "links.csv") if r["item_id"] == k(SHEET))
     assert (link["channel"], link["part"], link["location"]) == ("metadata", "description", DOC_URL)
-    assert [(r["item_id"], r["channel"]) for r in read(tmp_path, "scans.csv")] == [(DOC, "metadata"), (DOC, "export")]
+    assert [(r["item_id"], r["channel"]) for r in read(tmp_path, "scans.csv")] == [
+        (k(DOC), "metadata"),
+        (k(DOC), "export"),
+    ]
 
 
 def form_page(*texts):
@@ -471,8 +485,8 @@ def test_form(tmp_path, form, visibility):
 
     links = [r for r in read(tmp_path, "links.csv") if r["source"] == "walk"]
     assert [(r["channel"], r["item_id"], r["text"], r["container"], r["visibility"]) for r in links] == [
-        ("export", DOC, "the guide", "", "visible"),
-        ("api", FILE, "", "q1", visibility),
+        ("export", k(DOC), "the guide", "", "visible"),
+        ("api", k(FILE), "", "q1", visibility),
     ]
     assert [(r["channel"], r["read_as"]) for r in read(tmp_path, "scans.csv")] == [
         ("export", "anonymous"),
@@ -508,15 +522,15 @@ def test_published(tmp_path):
     make_run(tmp_path, google, {PUBLISHED: "public"}, check={"items": "unreadable"}).execute()
 
     found = items(tmp_path)
-    item = "e:" + PUBLISHED
+    item = k("e:" + PUBLISHED)
     assert (found[item]["status"], found[item]["followed"], found[item]["mime_type"]) == (
         "public",
         "1",
         SPREADSHEET,
     )
-    assert found[DOC]["linked_from"] == item
+    assert found[k(DOC)]["linked_from"] == item
     link = next(r for r in read(tmp_path, "links.csv") if r["source"] == "walk")
-    assert (link["item_id"], link["location"], link["channel"]) == (DOC, page, "export")
+    assert (link["item_id"], link["location"], link["channel"]) == (k(DOC), page, "export")
     assert [(r["item_id"], r["read_as"]) for r in read(tmp_path, "scans.csv")] == [(item, "anonymous")]
 
 
@@ -533,8 +547,8 @@ def test_not_read(tmp_path):
 
     scans = {r["item_id"]: r for r in read(tmp_path, "scans.csv") if r["channel"] == "none"}
     assert {i: (r["ok"], r["note"]) for i, r in scans.items()} == {
-        image: ("", "not read: image/png"),
-        "1MaPmApMaPmApMaPmApMaPmApMaPmAp78": ("", "not read: application/vnd.google-apps.map"),
+        k(image): ("", "not read: image/png"),
+        k("1MaPmApMaPmApMaPmApMaPmApMaPmAp78"): ("", "not read: application/vnd.google-apps.map"),
     }
 
 

@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from importlib.metadata import version
 
-# The User-Agent of every request. Google answers it as it answers a browser.
+# The User-Agent of every request.
 IDENTITY = f"walkrightin/{version('walkrightin')} (+https://github.com/open-contracting/walkrightin)"
 
 # How an anonymous visitor sees a URL.
@@ -27,7 +27,7 @@ def opens(status):
 
 @dataclass(frozen=True, slots=True)
 class Link:
-    """A link found in a source, or in a Drive file reached by the walk."""
+    """A link found in a source, or in an item reached by the walk."""
 
     #: Where the link was found, as the source names it: a URL when the source knows one cheaply.
     location: str
@@ -42,7 +42,7 @@ class Link:
     container: str = ""
     #: visible, hidden, very_hidden (a hidden spreadsheet tab), or source_only (only in an HTML page's source).
     visibility: str = "visible"
-    #: How a Drive file was read: export, download, api, comments or listing. Empty for other sources.
+    #: How an item was read: export, download, api, comments, listing or metadata. Empty for sources.
     channel: str = ""
     #: An extractor's note, like a URL joined across lines in a PDF.
     note: str = ""
