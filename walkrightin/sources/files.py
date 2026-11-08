@@ -47,7 +47,7 @@ class FilesSource(Source):
         with ThreadPoolExecutor(self.workers) as pool:
             results = list(pool.map(self.extractor.file, paths))
         for path, (found, error) in zip(paths, results, strict=True):
-            location = self.location_prefix + os.path.relpath(path, self.path)
+            location = self.location_prefix + os.path.relpath(path, self.path).replace(os.sep, "/")
             if error:
                 self.errors.append((location, error))
                 logger.warning("%s: %s", location, error)

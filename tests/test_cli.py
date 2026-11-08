@@ -47,9 +47,8 @@ def write_config(tmp_path):
     seeds = tmp_path / "seeds.csv"
     seeds.write_text(f"url,location\n{DOC_URL},page\n")
     config = tmp_path / "walkrightin.toml"
-    config.write_text(
-        f'cache_dir = "{tmp_path / "cache"}"\n[check]\ndelay = 0\n[[sources]]\ntype = "csv"\npath = "seeds.csv"\n'
-    )
+    cache = (tmp_path / "cache").as_posix()
+    config.write_text(f'cache_dir = "{cache}"\n[check]\ndelay = 0\n[[sources]]\ntype = "csv"\npath = "seeds.csv"\n')
     return str(config)
 
 
