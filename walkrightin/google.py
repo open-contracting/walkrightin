@@ -5,12 +5,12 @@ Also the readers of the Docs, Sheets and Slides APIs' links, which return each l
 caller can write the links back.
 """
 
-import os
 import re
 import shutil
 import tempfile
 import threading
 from contextlib import contextmanager
+from pathlib import Path
 
 import requests
 
@@ -75,7 +75,7 @@ class Google:
     """
 
     def __init__(self, credentials=None, subjects=(), domain=None, scopes=SCOPES, timeout=300):
-        self.key_file = os.path.expanduser(credentials) if credentials else None
+        self.key_file = Path(credentials).expanduser() if credentials else None
         self.scopes = list(scopes)
         self.subjects = list(subjects)
         self.domain = domain.lstrip("@").lower() if domain else None
@@ -217,7 +217,7 @@ class Google:
                     return
                 if not ext:
                     ext = disposition_ext(response.headers.get("Content-Disposition", ""))
-                path = os.path.join(tmp, file_id + (f".{ext.lstrip('.')}" if ext else ""))
+                path = Path(tmp) / (file_id + (f".{ext.lstrip('.')}" if ext else ""))
                 if error := save(response, path, max_bytes):
                     yield None, error
                     return
@@ -275,7 +275,7 @@ def save(response, path, max_bytes):
     """Write a streamed response to the path. Return the error text, or the empty string."""
     size = 0
     try:
-        with open(path, "wb") as out:
+        with path.open("wb") as out:
             for chunk in response.iter_content(CHUNK):
                 size += len(chunk)
                 if max_bytes is not None and size > max_bytes:
@@ -288,7 +288,7 @@ def save(response, path, max_bytes):
 
 def disposition_ext(value):
     m = re.search(r"""filename\*?=(?:UTF-8'')?"?([^";]+)"?""", value)
-    return os.path.splitext(m.group(1))[1].lstrip(".").lower() if m else ""
+    return Path(m.group(1)).suffix.lstrip(".").lower() if m else ""
 
 
 def is_google(mime_type):

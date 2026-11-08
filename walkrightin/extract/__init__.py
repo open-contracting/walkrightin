@@ -1,8 +1,8 @@
 """Find links to Drive in text and files. Every format's URLs come from one raw pass; parsers add text and place."""
 
-import os
 import re
 import zipfile
+from pathlib import Path
 from urllib.parse import unquote
 
 from walkrightin.extract import markup, office, pdf
@@ -31,7 +31,7 @@ OLE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 
 def kind_of(path):
     """Return the kind of text that a file's extension implies."""
-    return KINDS.get(os.path.splitext(path)[1].lower(), "text")
+    return KINDS.get(Path(path).suffix.lower(), "text")
 
 
 class Extractor:
@@ -80,12 +80,13 @@ class Extractor:
 
     def file(self, path, **fields):
         """Return (Links, error) for a PDF, an Office file, or another file read as text."""
-        with open(path, "rb") as f:
-            data = f.read()
+        data = Path(path).read_bytes()
         if data.startswith(b"%PDF-"):
             return self.pdf(path, data, **fields)
         if zipfile.is_zipfile(path):
-            links = self.text(office.contents(path), "html" if path.endswith((".html", ".htm")) else "text", **fields)
+            links = self.text(
+                office.contents(path), "html" if Path(path).suffix.lower() in {".html", ".htm"} else "text", **fields
+            )
             return links + self.sheet(path, **fields), ""
         if data.startswith(OLE):
             return self.text(office.legacy(data), **fields), ""

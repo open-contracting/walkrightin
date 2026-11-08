@@ -1,7 +1,5 @@
 """Check how an anonymous visitor sees a URL, with a cache and rate-limit handling."""
 
-import json
-import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -12,6 +10,7 @@ from urllib.parse import urljoin
 import requests
 
 from walkrightin.model import CLOSED_FORM, ERROR, GONE, NOT_FOUND, PUBLIC, RATE_LIMITED, REDIRECT, SIGNIN
+from walkrightin.output import read_json, write_json
 from walkrightin.urls import check_url
 
 USER_AGENT = "Mozilla/5.0"
@@ -41,10 +40,7 @@ class Checker:
         self.session = session or requests.Session()
         self.timeout = timeout
         self._lock = threading.Lock()
-        self.cache = {}
-        if cache_path and os.path.exists(cache_path):
-            with open(cache_path) as f:
-                self.cache = json.load(f)
+        self.cache = read_json(cache_path, {}) if cache_path else {}
 
     def check(self, url):
         """Return {"status", "http", "location", "checked_at"} for the URL, from the cache if fresh."""
@@ -73,10 +69,9 @@ class Checker:
     def save(self):
         if not self.cache_path:
             return
-        os.makedirs(os.path.dirname(os.path.abspath(self.cache_path)), exist_ok=True)
-        with self._lock, open(self.cache_path + ".tmp", "w") as f:
-            json.dump(self.cache, f, indent=1, sort_keys=True)
-        os.replace(self.cache_path + ".tmp", self.cache_path)
+        with self._lock:
+            cache = dict(self.cache)
+        write_json(self.cache_path, cache)
 
     def get(self, url):
         response = self.session.get(

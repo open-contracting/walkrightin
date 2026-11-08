@@ -4,6 +4,7 @@ import dataclasses
 import os
 import tomllib
 from dataclasses import dataclass, field
+from pathlib import Path
 
 CHANNELS = ("export", "api", "comments")
 
@@ -87,16 +88,17 @@ SOURCE_PATHS = ("path",)
 
 def load(path=None, data=None):
     """Return the Config in the TOML file, or in ``data``. Relative paths are relative to the file."""
-    base = os.getcwd()
+    base = Path.cwd()
     if path is not None:
-        with open(path, "rb") as f:
-            data = tomllib.load(f)
-        base = os.path.dirname(os.path.abspath(path))
+        path = Path(path)
+        data = tomllib.loads(path.read_text())
+        base = path.resolve().parent
     data = dict(data or {})
 
     def resolve(value):
-        value = os.path.expanduser(value)
-        return value if os.path.isabs(value) else os.path.join(base, value)
+        # Paths stay strings, so that the config serializes to JSON in run.json.
+        value = Path(value).expanduser()
+        return str(value if value.is_absolute() else base / value)
 
     for name, keys in PATHS.items():
         for key in keys:
@@ -120,7 +122,7 @@ def load(path=None, data=None):
         short_links=table(ShortLinks, data.pop("short_links", {}), "short_links"),
         google=table(Google, data.pop("google", {}), "google"),
         sources=sources,
-        cache_dir=os.path.expanduser(data.pop("cache_dir", Config.cache_dir)),
+        cache_dir=str(Path(data.pop("cache_dir", Config.cache_dir)).expanduser()),
         wrappers=data.pop("wrappers", []),
     )
     if data:

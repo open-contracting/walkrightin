@@ -1,5 +1,5 @@
 import csv
-import os
+from pathlib import Path
 
 from walkrightin.model import Link
 from walkrightin.sources import Source
@@ -17,7 +17,7 @@ class CSVSource(Source):
 
     def __init__(self, context, *, path, url="url", location="location", text=None, separator=None, **kwargs):
         super().__init__(context, **kwargs)
-        self.path = os.path.expanduser(path)
+        self.path = Path(path).expanduser()
         self.url = url
         self.location = location
         self.text = text
@@ -30,9 +30,9 @@ class CSVSource(Source):
         return [value] if value else []
 
     def links(self):
-        with open(self.path, newline="") as f:
+        with self.path.open(newline="") as f:
             for row in csv.DictReader(f):
                 text = row.get(self.text, "") if self.text else ""
                 for url in self.split(row.get(self.url)):
-                    for location in self.split(row.get(self.location)) or [self.path]:
+                    for location in self.split(row.get(self.location)) or [str(self.path)]:
                         yield Link(location, url, text)

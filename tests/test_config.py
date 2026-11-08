@@ -1,5 +1,3 @@
-import os
-
 import pytest
 
 from walkrightin import config
@@ -40,8 +38,8 @@ orgs = ["o"]
         )
     )
 
-    assert c.walk.also_follow == os.path.join(tmp_path, "ids.txt")
-    assert c.sources[0]["path"] == os.path.join(tmp_path, "uploads")
+    assert c.walk.also_follow == str(tmp_path / "ids.txt")
+    assert c.sources[0]["path"] == str(tmp_path / "uploads")
     assert c.folder_limit is None
 
 

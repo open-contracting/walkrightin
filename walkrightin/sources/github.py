@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import subprocess
+from pathlib import Path
 
 from walkrightin.extract import DOCUMENTS, kind_of
 from walkrightin.sources import Source
@@ -33,7 +34,7 @@ class GitHubSource(Source):
         self.branches = branches or {}
         self.forks = forks
         self.archived = archived
-        self.clones = os.path.join(context.cache_dir, "repos")
+        self.clones = Path(context.cache_dir) / "repos"
 
     def repositories(self, org):
         """Return the organization's public repositories."""
@@ -61,8 +62,8 @@ class GitHubSource(Source):
 
     def checkout(self, repo, branch):
         """Return (directory, branch name) for a shallow clone of the branch (default: the default branch)."""
-        directory = os.path.join(self.clones, repo + (f"@{branch}" if branch else ""))
-        if os.path.exists(directory):
+        directory = self.clones / (repo + (f"@{branch}" if branch else ""))
+        if directory.exists():
             ref = branch or "HEAD"
             subprocess.run(["git", "-C", directory, "fetch", "-q", "--depth", "1", "origin", ref], check=True)  # noqa: S603, S607
             subprocess.run(["git", "-C", directory, "reset", "-q", "--hard", "FETCH_HEAD"], check=True)  # noqa: S603, S607
@@ -83,8 +84,8 @@ class GitHubSource(Source):
         """Yield (path, Links) for each tracked text file and document in the clone."""
         out = subprocess.run(["git", "-C", directory, "ls-files", "-z"], capture_output=True, check=True)  # noqa: S603, S607
         for path in out.stdout.decode().split("\0"):
-            full = os.path.join(directory, path)
-            if not path or not os.path.isfile(full) or os.path.islink(full):
+            full = Path(directory) / path
+            if not path or not full.is_file() or full.is_symlink():
                 continue
             if path.lower().endswith(DOCUMENTS):
                 found, error = self.extractor.file(full)
@@ -92,9 +93,8 @@ class GitHubSource(Source):
                     logger.warning("%s: %s", full, error)
                 yield path, found
             # Larger text files are data, like test fixtures, rather than pages.
-            elif os.path.getsize(full) <= self.context.max_text_bytes:
-                with open(full, "rb") as f:
-                    data = f.read()
+            elif full.stat().st_size <= self.context.max_text_bytes:
+                data = full.read_bytes()
                 if b"\0" not in data[:8000]:
                     yield path, self.extractor.text(data.decode("utf-8", "replace"), kind_of(path))
             else:

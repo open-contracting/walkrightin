@@ -2,7 +2,7 @@
 
 import csv
 import json
-import os
+from pathlib import Path
 
 LINK_FIELDS = [
     "source",
@@ -55,29 +55,36 @@ COMMENT_FIELDS = [
 ]
 
 
+def temporary(path):
+    return path.with_name(f"{path.name}.tmp")
+
+
 def write_csv(path, fieldnames, rows):
-    with open(path + ".tmp", "w", newline="") as f:
+    path = Path(path)
+    with temporary(path).open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
-    os.replace(path + ".tmp", path)
+    temporary(path).replace(path)
 
 
 def read_csv(path):
-    if not os.path.exists(path):
+    path = Path(path)
+    if not path.exists():
         return []
-    with open(path, newline="") as f:
+    with path.open(newline="") as f:
         return list(csv.DictReader(f))
 
 
 def write_json(path, data):
-    with open(path + ".tmp", "w") as f:
-        json.dump(data, f, indent=1, sort_keys=True)
-    os.replace(path + ".tmp", path)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary(path).write_text(json.dumps(data, indent=1, sort_keys=True))
+    temporary(path).replace(path)
 
 
 def read_json(path, default=None):
-    if not os.path.exists(path):
+    path = Path(path)
+    if not path.exists():
         return default
-    with open(path) as f:
-        return json.load(f)
+    return json.loads(path.read_text())

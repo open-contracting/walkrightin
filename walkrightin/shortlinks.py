@@ -1,7 +1,5 @@
 """Recognize short links (bit.ly, forms.gle, etc.) and follow them to the Drive files they lead to."""
 
-import json
-import os
 import re
 import threading
 from urllib.parse import parse_qs, unquote, urljoin, urlsplit
@@ -9,6 +7,7 @@ from urllib.parse import parse_qs, unquote, urljoin, urlsplit
 import requests
 from antispam_link_shorteners import link_shorteners_list
 
+from walkrightin.output import read_json, write_json
 from walkrightin.urls import DRIVE, END, normalize_short
 
 # A host and path, with or without a scheme. The host must start the match, so that "t.co/" isn't matched in
@@ -74,18 +73,13 @@ class ShortLinks:
 
     def load(self, path):
         """Read followed short links from a JSON cache."""
-        if os.path.exists(path):
-            with open(path) as f:
-                self._cache.update({url: tuple(result) for url, result in json.load(f).items()})
+        self._cache.update({url: tuple(result) for url, result in read_json(path, {}).items()})
 
     def save(self, path):
         """Write followed short links to a JSON cache, except those whose request failed."""
-        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with self._lock:
             cache = {url: result for url, result in self._cache.items() if result[1] != "000"}
-        with open(path + ".tmp", "w") as f:
-            json.dump(cache, f, indent=1, sort_keys=True)
-        os.replace(path + ".tmp", path)
+        write_json(path, cache)
 
     def resolve(self, url):
         """Return the Drive URL that the short link leads to, or None."""

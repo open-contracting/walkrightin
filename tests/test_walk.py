@@ -1,8 +1,8 @@
 import csv
 import json
-import os
 import tempfile
 from contextlib import contextmanager
+from pathlib import Path
 
 import pytest
 
@@ -52,9 +52,8 @@ class FakeGoogle:
             yield None, "403 Forbidden"
             return
         with tempfile.TemporaryDirectory() as tmp:
-            path = os.path.join(tmp, f"{file_id}.{'txt' if text else 'html'}")
-            with open(path, "w") as f:
-                f.write(self.contents[file_id + (":txt" if text else "")] if text else self.contents[file_id])
+            path = Path(tmp) / f"{file_id}.{'txt' if text else 'html'}"
+            path.write_text(self.contents[file_id + (":txt" if text else "")] if text else self.contents[file_id])
             yield path, ""
 
     @contextmanager
@@ -104,7 +103,7 @@ def make_run(tmp_path, google, statuses, sources=None, walk=None, check=None, **
 
 
 def read(tmp_path, name):
-    with open(tmp_path / "out" / name) as f:
+    with (tmp_path / "out" / name).open() as f:
         return list(csv.DictReader(f))
 
 

@@ -3,6 +3,7 @@
 import html
 import re
 import zipfile
+from pathlib import Path
 from urllib.parse import unquote
 
 VISIBILITY = {"visible": "visible", "hidden": "hidden", "veryHidden": "very_hidden"}
@@ -17,8 +18,7 @@ def contents(path):
                 for name in z.namelist()
                 if name.endswith((".xml", ".rels", ".html", ".htm"))
             )
-    with open(path, errors="ignore") as f:
-        return f.read()
+    return Path(path).read_text(errors="ignore")
 
 
 def legacy(data):

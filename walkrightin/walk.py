@@ -3,10 +3,10 @@
 import csv
 import dataclasses
 import logging
-import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import requests
 
@@ -83,8 +83,10 @@ class Run:
         self.only = set(only or ())
         self.resume = resume
         self.walk_enabled = walk
-        os.makedirs(out, exist_ok=True)
-        os.makedirs(config.cache_dir, exist_ok=True)
+        self.out = Path(out)
+        self.out.mkdir(parents=True, exist_ok=True)
+        cache = Path(config.cache_dir)
+        cache.mkdir(parents=True, exist_ok=True)
         self.session = requests.Session()
         self.shortlinks = ShortLinks(
             config.short_links.domains,
@@ -92,12 +94,12 @@ class Run:
             config.short_links.exclude_domains,
             session=self.session,
         )
-        self.shortlinks_cache = os.path.join(config.cache_dir, "shortlinks.json")
+        self.shortlinks_cache = cache / "shortlinks.json"
         self.shortlinks.load(self.shortlinks_cache)
         self.wrappers = [*WRAPPERS, *((w[0], w[1], tuple(w[2])) for w in config.wrappers)]
         self.extractor = Extractor(self.shortlinks, wrappers=self.wrappers)
         self.checker = Checker(
-            os.path.join(config.cache_dir, "checks.json"),
+            cache / "checks.json",
             ttl_days=config.check.ttl_days,
             concurrency=config.check.concurrency,
             delay=config.check.delay,
@@ -110,12 +112,12 @@ class Run:
         self.max_download = config.walk.max_download_mb * 2**20
         self.folder_limit = config.folder_limit
         self.channels = set(config.walk.channels)
-        self.downloads_cache_path = os.path.join(config.cache_dir, "downloads.json")
+        self.downloads_cache_path = cache / "downloads.json"
         self.downloads_cache = read_json(self.downloads_cache_path, {})
         self.aliases = self.read_aliases(config.walk.aliases)
         self.also_follow = self.read_ids(config.walk.also_follow)
         self.result = Result()
-        self.path = lambda name: os.path.join(out, name)
+        self.path = lambda name: self.out / name
 
     # Inputs
 
@@ -123,14 +125,14 @@ class Run:
     def read_ids(path):
         if not path:
             return set()
-        with open(path) as f:
-            return {line.strip() for line in f if line.strip() and not line.startswith("#")}
+        lines = Path(path).read_text().splitlines()
+        return {line.strip() for line in lines if line.strip() and not line.startswith("#")}
 
     @staticmethod
     def read_aliases(path):
         if not path:
             return {}
-        with open(path, newline="") as f:
+        with Path(path).open(newline="") as f:
             return {r["published_id"]: r["file_id"] for r in csv.DictReader(f)}
 
     def default_reader(self, drive, owner):  # noqa: ARG002 # as drive-sharing's reader(), which uses the drive
@@ -351,8 +353,7 @@ class Run:
         if mime == g.DOCUMENT and any(not c.get("resolved") and c.get("quotedFileContent") for c in items):
             with self.google.export(user, item_id, mime, key, text=True) as (path, _):
                 if path:
-                    with open(path, errors="ignore") as f:
-                        text = norm(f.read())
+                    text = norm(path.read_text(errors="ignore"))
         for c in items:
             part = "resolved_comment" if c.get("resolved") else "comment"
             quote = c.get("quotedFileContent", {}).get("value", "")
@@ -430,11 +431,11 @@ class Run:
 
     def sniff(self, path):
         """Return whether an anonymous download is a type to read: a PDF, a zip (Office) or an old Office file."""
-        with open(path, "rb") as f:
+        with path.open("rb") as f:
             head = f.read(8)
         if head.startswith((b"%PDF-", b"PK\x03\x04", b"\xd0\xcf\x11\xe0")):
             return True
-        return bool(self.config.walk.download_csv and path.endswith(".csv"))
+        return bool(self.config.walk.download_csv and path.suffix == ".csv")
 
     # The walk
 
@@ -544,8 +545,7 @@ class Run:
                 "refreshed": sorted(self.only),
             },
         )
-        if os.path.exists(self.path("state.json")):
-            os.remove(self.path("state.json"))
+        self.path("state.json").unlink(missing_ok=True)
         return self.result
 
 
