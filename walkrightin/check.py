@@ -62,12 +62,13 @@ class Checker:
         return result
 
     def check_all(self, urls):
-        """Return {URL: result} for the distinct URLs."""
+        """Return {URL: result} for the distinct URLs, requesting each URL to check once."""
         urls = list(dict.fromkeys(urls))
+        keys = list(dict.fromkeys(check_url(url) for url in urls))
         with ThreadPoolExecutor(self.concurrency) as pool:
-            results = dict(zip(urls, pool.map(self.check, urls), strict=True))
+            results = dict(zip(keys, pool.map(self.check, keys), strict=True))
         self.save()
-        return results
+        return {url: results[check_url(url)] for url in urls}
 
     def save(self):
         if not self.cache_path:
