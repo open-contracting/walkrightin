@@ -52,7 +52,7 @@ Anonymous and credentials modes
 
 Without ``[google]`` credentials, walkrightin reads public files through their public export and download URLs, so it reads exactly what the public can. It follows an item if it opens anonymously. It can't list folders, read comments, or use the Docs, Sheets and Slides APIs.
 
-With a service account that has domain-wide delegation, walkrightin reads each item's metadata as the first of ``subjects`` who can see it, and its link role as its owner (if in ``domain``) or that subject. It follows an item if it has an anyone-with-link role, or if its role can't be read and it opens anonymously, or if it's in ``also_follow``. It reads content as the subject who can see the item. An item that no subject can see is read anonymously, if it opens. Grant the service account the read-only scopes for Drive, Docs, Sheets and Slides.
+With a service account that has domain-wide delegation, walkrightin reads each item's metadata as the first of ``subjects`` who can see it, and its link role as its owner (if in ``domain``) or that subject. It follows an item if it has an anyone-with-link role, or if its role can't be read and it opens anonymously, or if it's in ``also_follow``. It reads content as the subject who can see the item. An item that no subject can see is read anonymously, if it opens. The service account needs domain-wide delegation for ``scopes``: by default, Drive's read-only scope, which the Docs, Sheets and Slides APIs also accept. If its delegation authorizes only the full Drive scope, set ``scopes`` to that.
 
 Configure
 ---------
@@ -86,6 +86,7 @@ Configure
    credentials = "~/key.json"         # or WALKRIGHTIN_CREDENTIALS
    subjects = ["staff@example.org"]
    domain = "example.org"
+   scopes = ["https://www.googleapis.com/auth/drive.readonly"]
 
    [[sources]]
    type = "github"

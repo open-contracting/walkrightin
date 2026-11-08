@@ -104,7 +104,7 @@ class Run:
             session=self.session,
         )
         gc = config.google
-        self.google = g.Google(gc.credentials, gc.subjects, gc.domain)
+        self.google = g.Google(gc.credentials, gc.subjects, gc.domain, gc.scopes)
         self.reader = reader or self.default_reader
         self.permissions = permissions or self.google.link_role
         self.max_download = config.walk.max_download_mb * 2**20

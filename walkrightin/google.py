@@ -70,12 +70,13 @@ class Google:
     """
     Drive access. Without ``credentials``, only public URLs are read.
 
-    ``credentials`` is a service account's key file, with domain-wide delegation for the Drive read-only scope, plus
-    the Docs, Sheets and Slides scopes for the API channel. ``subjects`` are the users to act as, in order.
+    ``credentials`` is a service account's key file, with domain-wide delegation for ``scopes``: by default, Drive's
+    read-only scope, which the Docs, Sheets and Slides APIs also accept. ``subjects`` are the users to act as.
     """
 
-    def __init__(self, credentials=None, subjects=(), domain=None, timeout=300):
+    def __init__(self, credentials=None, subjects=(), domain=None, scopes=SCOPES, timeout=300):
         self.key_file = os.path.expanduser(credentials) if credentials else None
+        self.scopes = list(scopes)
         self.subjects = list(subjects)
         self.domain = domain.lstrip("@").lower() if domain else None
         self.timeout = timeout
@@ -99,14 +100,8 @@ class Google:
                 from google.auth.transport.requests import AuthorizedSession  # noqa: PLC0415
                 from google.oauth2 import service_account  # noqa: PLC0415
 
-                scopes = [
-                    *SCOPES,
-                    "https://www.googleapis.com/auth/documents.readonly",
-                    "https://www.googleapis.com/auth/spreadsheets.readonly",
-                    "https://www.googleapis.com/auth/presentations.readonly",
-                ]
                 credentials = service_account.Credentials.from_service_account_file(
-                    self.key_file, scopes=scopes, subject=user
+                    self.key_file, scopes=self.scopes, subject=user
                 )
                 sessions[user] = AuthorizedSession(credentials)
         return sessions[user]
