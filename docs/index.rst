@@ -6,6 +6,8 @@ walkrightin |release|
 .. toctree::
    :caption: Contents
 
+   usage
+   sources
    api/index
    contributing/index
    changelog

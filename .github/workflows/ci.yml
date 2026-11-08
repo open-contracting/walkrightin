@@ -17,6 +17,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: pyproject.toml
+      # Windows skips the PDF tests.
+      - if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get install -y qpdf poppler-utils
+      - if: matrix.os == 'macos-latest'
+        run: brew install qpdf poppler
       - run: pip install .[test]
       - run: coverage run --source=walkrightin pytest -W error
       - uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5.5.1
