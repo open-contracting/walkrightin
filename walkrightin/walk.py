@@ -263,7 +263,9 @@ class Run:
                     version=info.get("md5Checksum") or info.get("headRevisionId") or info.get("modifiedTime", ""),
                     resource_key=info.get("resourceKey") or key,
                 )
-                m["link_role"], m["link_from"] = self.google.link(self.reader(m["drive_id"], owner) or user, item_id)
+                permission_reader = self.reader(m["drive_id"], owner) or user
+                m["link_role"], inherited, m["link_from"] = self.google.link(permission_reader, item_id)
+                m["link_inherited"] = "1" if inherited else ""
             else:
                 m["error"] = "no access"
         if not self.google.credentialed or self.config.check.items == "all" or m["link_role"] == "?":

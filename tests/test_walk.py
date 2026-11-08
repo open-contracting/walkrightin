@@ -46,7 +46,7 @@ class FakeGoogle:
 
     def link(self, user, file_id):
         self.read_as.append((user, file_id))
-        return self.roles.get(file_id, "?"), self.inherited.get(file_id, "")
+        return self.roles.get(file_id, "?"), file_id in self.inherited, self.inherited.get(file_id, "")
 
     @contextmanager
     def export(self, user, file_id, mime_type, key="", *, text=False):
@@ -255,7 +255,8 @@ def test_also_follow_and_readers(tmp_path):
 
     found = items(tmp_path)
     assert found[DOC]["followed"] == "1"
-    assert found[FOLDER_ID]["link_from"] == "1ParentFolder"
+    assert (found[FOLDER_ID]["link_inherited"], found[FOLDER_ID]["link_from"]) == ("1", "1ParentFolder")
+    assert found[DOC]["link_inherited"] == ""
     # The drive's reader, else (for an unlisted drive) whoever can see the item.
     assert google.read_as[:2] == [("organizer@example.org", DOC), ("staff@example.org", FOLDER_ID)]
 

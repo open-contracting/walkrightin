@@ -152,10 +152,10 @@ class Google:
 
     def link(self, user, file_id):
         """
-        Return (the item's anyone-with-link role, the folder it's inherited from or "").
+        Return (the item's anyone-with-link role, whether it's inherited, the folder it's inherited from or "").
 
         The role is "" if the item has no link, or "?" if its permissions can't be read. A link that is the item's own,
-        as well as its folder's, isn't inherited.
+        as well as its folder's, isn't inherited. Drive doesn't always say which folder an inherited link is from.
         """
         permissions, error = self.pages(
             user,
@@ -169,15 +169,15 @@ class Google:
         )
         # A viewer who isn't the owner sees no permissions.
         if error or not permissions:
-            return "?", ""
+            return "?", False, ""
         permission = next((p for p in permissions if p.get("type") == "anyone"), None)
         if not permission:
-            return "", ""
+            return "", False, ""
         # Outside shared drives, permissions have no details, and are the item's own.
         details = permission.get("permissionDetails") or [{}]
         if any(not d.get("inherited") for d in details):
-            return permission["role"], ""
-        return permission["role"], details[0].get("inheritedFrom", "")
+            return permission["role"], False, ""
+        return permission["role"], True, next((d["inheritedFrom"] for d in details if d.get("inheritedFrom")), "")
 
     @contextmanager
     def export(self, user, file_id, mime_type, key="", *, text=False):

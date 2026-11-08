@@ -31,6 +31,7 @@ ITEM_FIELDS = [
     "linked_from",
     "followed",
     "link_role",
+    "link_inherited",
     "link_from",
     "read_as",
     "name",

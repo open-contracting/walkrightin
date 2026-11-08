@@ -253,6 +253,7 @@ def test_link(monkeypatch):
                 "permissionDetails": [{"inherited": True, "inheritedFrom": "F"}, {"inherited": False}],
             }
         ],
+        "unknown folder": [{"type": "anyone", "role": "reader", "permissionDetails": [{"inherited": True}]}],
         "inherited": [
             {"type": "anyone", "role": "reader", "permissionDetails": [{"inherited": True, "inheritedFrom": "F"}]}
         ],
@@ -263,9 +264,10 @@ def test_link(monkeypatch):
     g = google.Google()
 
     assert {key: g.link("user", key) for key in responses} == {
-        "unreadable": ("?", ""),
-        "none": ("", ""),
-        "my drive": ("reader", ""),
-        "own": ("writer", ""),
-        "inherited": ("reader", "F"),
+        "unreadable": ("?", False, ""),
+        "none": ("", False, ""),
+        "my drive": ("reader", False, ""),
+        "own": ("writer", False, ""),
+        "unknown folder": ("reader", True, ""),
+        "inherited": ("reader", True, "F"),
     }

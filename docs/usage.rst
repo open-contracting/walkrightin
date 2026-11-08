@@ -126,7 +126,7 @@ Outputs
 ``links.csv``
   Each link to Drive: its ``source`` (or ``walk`` for a link in a Drive file), ``location``, ``part`` (body, header, footnote, chip, suggestion, cell, note, comment, resolved_comment, speaker_notes, script, html_comment, attribute:NAME, folder_child, bare_id, ...), ``container`` (a tab, cell, slide or comment), ``visibility`` (visible, hidden, very_hidden, source_only), ``channel``, ``url`` as found, ``text``, ``note``, the anonymous check of a source's URL as found (``url_status``, ``http``), the Drive URL it leads to (``target_url``, and ``short_url`` if through a short link), ``item_id``, ``resource_key`` and ``depth``.
 ``items.csv``
-  Each item reached: its anonymous check (``status``, ``http``, ``checked_at``), ``depth``, ``linked_from``, whether it was ``followed``, and with credentials, its ``link_role`` ("" for none, "?" if unreadable), the folder it's inherited from (``link_from``, if not its own), who could read it (``read_as``) and its metadata.
+  Each item reached: its anonymous check (``status``, ``http``, ``checked_at``), ``depth``, ``linked_from``, whether it was ``followed``, and with credentials, its ``link_role`` ("" for none, "?" if unreadable), whether that link is inherited rather than its own (``link_inherited``) and from which folder, if Drive says (``link_from``), who could read it (``read_as``) and its metadata.
 ``scans.csv``
   Each read of an item, by channel: who read it, whether it succeeded, its error, its number of links, and any note.
 ``comments.csv``
