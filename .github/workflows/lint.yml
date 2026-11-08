@@ -6,4 +6,4 @@ jobs:
     permissions:
       contents: read
     with:
-      standard-maintenance-scripts-extras: google,wordpress
+      standard-maintenance-scripts-extras: google-drive,wordpress
