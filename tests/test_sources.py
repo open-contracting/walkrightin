@@ -100,8 +100,10 @@ def test_wordpress(context, monkeypatch):
         (
             4,
             "post_content",
-            f'{{"link":{{"title":"Deep dive","url":"{ESCAPED_DOC_URL}"}},'
-            f'"buttons_0_link":{{"title":"VIEW \\u00e1","url":"{ESCAPED_DOC_URL}"}}}}',
+            (
+                f'{{"link":{{"title":"Deep dive","url":"{ESCAPED_DOC_URL}"}},'
+                f'"buttons_0_link":{{"title":"VIEW \\u00e1","url":"{ESCAPED_DOC_URL}"}}}}'
+            ),
         ),
     ]
     monkeypatch.setattr(WordPressSource, "rows", lambda _self: iter(rows))
