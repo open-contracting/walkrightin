@@ -381,7 +381,6 @@ def test_get_rate_limited(monkeypatch, responses, expected, sleeps):
 
 
 def test_api_links_blank():
-
     doc_url = f"https://docs.google.com/document/d/{DOC_ID}/edit"
     file_url = f"https://drive.google.com/file/d/{FILE}/view"
     sheet_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit"
